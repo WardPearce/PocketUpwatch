@@ -10,7 +10,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import org.json.JSONTokener
 import javax.xml.parsers.DocumentBuilderFactory
 import org.xml.sax.InputSource
@@ -26,6 +25,8 @@ import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.Response
 import java.io.IOException
+import java.net.InetSocketAddress
+import java.net.Socket
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
@@ -65,8 +66,7 @@ class MonitorService : Service() {
     private fun openIntent(): PendingIntent = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     private fun online(): Boolean {
         val cm = getSystemService(ConnectivityManager::class.java)
-        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
-        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        return cm.activeNetwork != null
     }
     private fun matchesBody(type: String, expected: String, actual: String): Boolean = try {
         when (type) {
@@ -101,13 +101,31 @@ class MonitorService : Service() {
             val start = System.nanoTime()
             var up = false
             val detail = try {
-                permits.withPermit { execute(client.newCall(Request.Builder().url(service.url).get().build())).use { response ->
+                permits.withPermit {
+                    val target = MonitorTarget.parse(service.url) ?: throw IOException("Invalid target")
+                    when (target.protocol) {
+                        "tcp" -> {
+                            Socket().use { it.connect(InetSocketAddress(target.host, target.port), 5_000) }
+                            up = true
+                            "TCP connection successful"
+                        }
+                        "ping" -> {
+                            val process = ProcessBuilder("/system/bin/ping", "-c", "1", "-W", "5", target.host).redirectErrorStream(true).start()
+                            try {
+                                val finished = process.waitFor(7, TimeUnit.SECONDS)
+                                up = finished && process.exitValue() == 0
+                                if (up) "Ping reply received" else if (!finished) "Ping timed out" else "No ping reply"
+                            } finally { process.destroy() }
+                        }
+                        else -> execute(client.newCall(Request.Builder().url(service.url).get().build())).use { response ->
                     val statusOk = if (service.expectedCode == 0) response.isSuccessful else response.code == service.expectedCode
                     val body = if (service.bodyType == "None") "" else response.peekBody(1_048_577).bytes().let { if (it.size > 1_048_576) null else it.toString(Charsets.UTF_8) }
                     val bodyOk = service.bodyType == "None" || (body != null && matchesBody(service.bodyType, service.expectedBody, body))
                     up = statusOk && bodyOk
                     "HTTP ${response.code}" + if (body == null) " · body exceeds 1 MiB" else if (!bodyOk) " · body mismatch" else ""
-                } }
+                        }
+                    }
+                }
             } catch (e: CancellationException) { throw e } catch (e: java.net.SocketTimeoutException) { "Timeout" } catch (e: javax.net.ssl.SSLException) { "TLS failure" } catch (e: IOException) { "DNS or connection failure" } catch (e: Exception) { "Check failed" }
             if (!online()) return@withLock
             val elapsed = (System.nanoTime() - start) / 1_000_000
