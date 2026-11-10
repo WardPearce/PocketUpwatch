@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Pocket Upwatch</title>
+  <desc id="desc">A pocket-shaped U beneath a signal arc and central beacon dot.</desc>
+  <rect width="512" height="512" rx="112" fill="#21005d"/>
+  <path d="M166 154a127 127 0 0 1 180 0" fill="none" stroke="#d0bcff" stroke-width="20" stroke-linecap="round"/>
+  <circle cx="256" cy="165" r="17" fill="#d0bcff"/>
+  <path d="M140 226v76c0 71 44 118 116 148 72-30 116-77 116-148v-76" fill="none" stroke="#eaddff" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
