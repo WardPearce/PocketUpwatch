@@ -1,7 +1,18 @@
 package com.pocketupwatch
 
+import com.patrykandpatrick.vico.compose.style.ProvideChartStyle
+import com.patrykandpatrick.vico.compose.m3.style.m3ChartStyle
+import com.patrykandpatrick.vico.compose.chart.Chart
+import com.patrykandpatrick.vico.compose.chart.line.lineChart
+import com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis
+import com.patrykandpatrick.vico.compose.chart.scroll.rememberChartScrollSpec
+import com.patrykandpatrick.vico.core.entry.entryModelOf
+import com.patrykandpatrick.vico.core.entry.entryOf
 import android.Manifest
 import android.content.Intent
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
@@ -54,8 +65,16 @@ import java.text.DateFormat
 import java.util.Date
 import kotlin.math.roundToInt
 
+@Composable private fun appColorScheme(mode: String): ColorScheme {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val dark = when (mode) { "Dark" -> true; "Light" -> false; else -> isSystemInDarkTheme() }
+    return if (Build.VERSION.SDK_INT >= 31) {
+        if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    } else if (dark) darkColorScheme() else lightColorScheme()
+}
+
 class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContent { val prefs = remember { getSharedPreferences("settings", MODE_PRIVATE) }; var mode by remember { mutableStateOf(prefs.getString("theme", "System") ?: "System") }; val dark = when (mode) { "Dark" -> true; "Light" -> false; else -> isSystemInDarkTheme() }; val colors = if (Build.VERSION.SDK_INT >= 31) { if (dark) dynamicDarkColorScheme(this) else dynamicLightColorScheme(this) } else { if (dark) darkColorScheme() else lightColorScheme() }; MaterialTheme(colorScheme = colors) { App(mode = mode, onMode = { mode = it; prefs.edit().putString("theme", it).apply() }) } } }
+    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContent { val prefs = remember { getSharedPreferences("settings", MODE_PRIVATE) }; var mode by remember { mutableStateOf(prefs.getString("theme", "System") ?: "System") }; MaterialTheme(colorScheme = appColorScheme(mode)) { App(mode = mode, onMode = { mode = it; prefs.edit().putString("theme", it).apply() }) } } }
 }
 class MonitorViewModel(app: Application) : AndroidViewModel(app) {
     val dao = MonitorDb.get(app).dao()
@@ -72,17 +91,31 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
     var editing by remember { mutableStateOf<ServiceEntry?>(null) }
     var selected by remember { mutableStateOf<ServiceEntry?>(null) }
     val monitoringActive by MonitorService.active.collectAsState()
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     var notificationsEnabled by remember { mutableStateOf(androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) }
+    var notificationRequestComplete by remember { mutableStateOf(Build.VERSION.SDK_INT < 33 || androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        notificationsEnabled = androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
+        notificationRequestComplete = true
+    }
+    LaunchedEffect(Unit) {
+        if (!notificationRequestComplete && Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
     var batteryUnrestricted by remember { mutableStateOf(context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)) }
     val batteryPrefs = remember { context.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE) }
     var showBatteryPrompt by remember { mutableStateOf(!batteryUnrestricted && !batteryPrefs.getBoolean("battery_prompt_shown", false)) }
+    var exactAlarmsAllowed by remember { mutableStateOf(CheckAlarm.canScheduleExact(context)) }
+    var showAlarmPrompt by remember { mutableStateOf(!exactAlarmsAllowed && !batteryPrefs.getBoolean("alarm_prompt_shown", false)) }
     val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
+    DisposableEffect(lifecycleOwner, exactAlarmsAllowed, monitoringActive) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 notificationsEnabled = androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
                 batteryUnrestricted = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+                val wasAllowed = exactAlarmsAllowed
+                exactAlarmsAllowed = CheckAlarm.canScheduleExact(context)
+                if (!wasAllowed && exactAlarmsAllowed && monitoringActive) {
+                    androidx.core.content.ContextCompat.startForegroundService(context, Intent(context, MonitorService::class.java).setAction(CheckAlarm.ACTION_CHECK))
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -91,10 +124,9 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
     LaunchedEffect(loadedServices != null) {
         if (loadedServices?.any { it.enabled } == true) {
             androidx.core.content.ContextCompat.startForegroundService(context, Intent(context, MonitorService::class.java))
-            if (Build.VERSION.SDK_INT >= 33 && !notificationsEnabled) permission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
-    if (showBatteryPrompt) {
+    if (showBatteryPrompt && notificationRequestComplete) {
         AlertDialog(
             onDismissRequest = { showBatteryPrompt = false; batteryPrefs.edit().putBoolean("battery_prompt_shown", true).apply() },
             title = { Text("Allow background monitoring") },
@@ -107,13 +139,26 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
             dismissButton = { TextButton(onClick = { showBatteryPrompt = false; batteryPrefs.edit().putBoolean("battery_prompt_shown", true).apply() }) { Text("Not now") } }
         )
     }
+    if (showAlarmPrompt && !showBatteryPrompt && notificationRequestComplete && Build.VERSION.SDK_INT >= 31) {
+        AlertDialog(
+            onDismissRequest = { showAlarmPrompt = false; batteryPrefs.edit().putBoolean("alarm_prompt_shown", true).apply() },
+            title = { Text("Allow scheduled checks") },
+            text = { Text("Allow alarms and reminders so Pocket Upwatch can schedule checks while your phone sleeps. Android may still delay checks to save battery.") },
+            confirmButton = { TextButton(onClick = {
+                showAlarmPrompt = false
+                batteryPrefs.edit().putBoolean("alarm_prompt_shown", true).apply()
+                context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}")))
+            }) { Text("Continue") } },
+            dismissButton = { TextButton(onClick = { showAlarmPrompt = false; batteryPrefs.edit().putBoolean("alarm_prompt_shown", true).apply() }) { Text("Not now") } }
+        )
+    }
     val showingEditor = adding || editing != null
     val closeEditor = { adding = false; editing = null }
     BackHandler(enabled = showingEditor || selected != null) { if (showingEditor) closeEditor() else selected = null }
     Scaffold(topBar = { TopAppBar(title = { Text(when { adding -> "Add a service"; editing != null -> "Edit service"; selected != null -> selected!!.name; else -> "Pocket Upwatch" }, fontWeight = FontWeight.Bold) }, navigationIcon = { if (showingEditor || selected != null) IconButton(onClick = { if (showingEditor) closeEditor() else selected = null }) { Icon(Icons.Default.ArrowBack, "Back") } }) }, floatingActionButton = { if (selected == null && !showingEditor) FloatingActionButton(onClick = { adding = true }) { Icon(Icons.Default.Add, "Add service") } }) { padding ->
         if (showingEditor) ServiceEditor(editing, Modifier.padding(padding), onCancel = closeEditor, onSave = { service ->
             vm.save(service); closeEditor(); selected = if (service.id != 0L) service else null
-            if (service.enabled) { if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS); androidx.core.content.ContextCompat.startForegroundService(context, Intent(context, MonitorService::class.java)) }
+            if (service.enabled) { androidx.core.content.ContextCompat.startForegroundService(context, Intent(context, MonitorService::class.java)) }
         })
         else if (selected != null) Detail(selected!!, vm, Modifier.padding(padding), onEdit = { editing = it }) { selected = null }
         else LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -123,8 +168,11 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
                     
                     Text("Checks reflect this device and network. Gaps are unknown; continuous coverage is not guaranteed.", style = MaterialTheme.typography.bodySmall)
                     if (!notificationsEnabled) {
-                        Text("Notifications are disabled. Enable them to receive alerts.", color = MaterialTheme.colorScheme.error)
-                        TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)) }) { Text("Notification settings") }
+                        Text("Notifications are disabled. Enable them in your phone's app settings to receive alerts.", color = MaterialTheme.colorScheme.error)
+                    }
+                    if (!exactAlarmsAllowed && Build.VERSION.SDK_INT >= 31) {
+                        Text("Allow alarms and reminders for more timely checks while the phone sleeps.", style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}"))) }) { Text("Open alarm settings") }
                     }
                     if (!batteryUnrestricted && services.any { it.enabled }) {
                         Text("Unrestricted battery use can improve background monitoring, but may use more power.", style = MaterialTheme.typography.bodySmall)
@@ -143,7 +191,7 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
             if (services.isEmpty()) item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(24.dp)) { Text("No services", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Spacer(Modifier.height(4.dp)); Text("Add an endpoint to start monitoring.", color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
             items(services, key = { it.id }) { service -> ServiceCard(service, vm, onToggle = { enabled ->
                 vm.save(service.copy(enabled = enabled))
-                if (enabled) { if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS); androidx.core.content.ContextCompat.startForegroundService(context, Intent(context, MonitorService::class.java)) }
+                if (enabled) { androidx.core.content.ContextCompat.startForegroundService(context, Intent(context, MonitorService::class.java)) }
             }) { selected = service } }
         }
     }
@@ -181,14 +229,60 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 }
-@Composable fun Graph(history: List<CheckEntry>, modifier: Modifier = Modifier) {
-    val points = history.take(60).asReversed()
-    val color = MaterialTheme.colorScheme.primary
-    Canvas(modifier) {
-        val max = points.maxOfOrNull { it.responseMs }?.coerceAtLeast(1) ?: 1
-        points.zipWithNext().forEachIndexed { i, pair ->
-            val x1 = size.width * i / (points.size - 1); val x2 = size.width * (i + 1) / (points.size - 1)
-            drawLine(color, Offset(x1, size.height * (1f - pair.first.responseMs.toFloat() / max)), Offset(x2, size.height * (1f - pair.second.responseMs.toFloat() / max)), strokeWidth = 4f)
+@Composable fun ResponseChart(history: List<CheckEntry>, modifier: Modifier = Modifier) {
+    val points = remember(history) { history.sortedBy { it.time } }
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (points.isEmpty()) { Text("No checks in this period"); return@Column }
+        if (points.size == 1) {
+            Text("${points.first().responseMs} ms · ${DateFormat.getDateTimeInstance().format(Date(points.first().time))}")
+            return@Column
+        }
+        val entries = remember(points) { points.map { entryOf((it.time - points.first().time) / 1000f, it.responseMs.toFloat()) }.distinctBy { it.x } }
+        if (entries.size < 2) { Text("${points.last().responseMs} ms"); return@Column }
+        ProvideChartStyle(m3ChartStyle()) {
+            Chart(chart = lineChart(), model = remember(entries) { entryModelOf(entries) },
+                modifier = Modifier.fillMaxWidth().weight(1f), startAxis = rememberStartAxis(),
+                chartScrollSpec = rememberChartScrollSpec(isScrollEnabled = false))
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(points.first().time)), style = MaterialTheme.typography.labelSmall)
+            Text(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(points.last().time)), style = MaterialTheme.typography.labelSmall)
+        }
+        Text("${points.size} checks · response time in ms", style = MaterialTheme.typography.bodySmall)
+    }
+}
+class GraphActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val id = intent.getLongExtra("serviceId", 0L)
+        val hours = intent.getIntExtra("hours", 24)
+        val graph = intent.getStringExtra("graph") ?: "Response time"
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
+        }
+        setContent {
+            val history by remember(id) { MonitorDb.get(application).dao().history(id) }.collectAsState(initial = emptyList())
+            val filtered = history.filter { it.time >= System.currentTimeMillis() - hours * 3600_000L }
+            val mode = remember { getSharedPreferences("settings", MODE_PRIVATE).getString("theme", "System") ?: "System" }
+            MaterialTheme(colorScheme = appColorScheme(mode)) {
+                Surface(Modifier.fillMaxSize()) {
+                    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeContent).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("$graph · ${hours}h", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                            IconButton(onClick = { finish() }) { Icon(Icons.Default.Close, "Close fullscreen") }
+                        }
+                        if (graph == "Response time") ResponseChart(filtered, Modifier.fillMaxWidth().weight(1f))
+                        else if (filtered.isEmpty()) Text("No checks in this period")
+                        else {
+                            AvailabilityGraph(filtered, hours, Modifier.fillMaxWidth().weight(1f))
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("${hours}h ago"); Text("Now") }
+                            Text("Green: up · Red: down · Blank: no checks", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -197,6 +291,10 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
     val active by MonitorService.active.collectAsState()
     var confirm by remember { mutableStateOf(false) }
     var hours by remember { mutableIntStateOf(24) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val openFullscreen: (String) -> Unit = { graph ->
+        context.startActivity(Intent(context, GraphActivity::class.java).putExtra("serviceId", service.id).putExtra("hours", hours).putExtra("graph", graph))
+    }
     val filtered = history.filter { it.time >= System.currentTimeMillis() - hours * 3600_000L }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
@@ -211,7 +309,10 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf(1 to "1h", 24 to "24h", 168 to "7d", 720 to "30d").forEach { (h, label) -> FilterChip(selected = hours == h, onClick = { hours = h }, label = { Text(label) }) } }
         DetailSection(MaterialTheme.colorScheme.primary) {
-            Text("Availability", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Availability", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                IconButton(onClick = { openFullscreen("Availability") }) { Icon(Icons.Default.Fullscreen, "Fullscreen availability") }
+            }
             val up = filtered.count { it.up }
             Text(if (filtered.isEmpty()) "No checks in this period" else "${"%.1f".format(100.0 * up / filtered.size)}% of samples successful · $up up / ${filtered.size - up} down", style = MaterialTheme.typography.titleMedium)
             if (filtered.isNotEmpty()) {
@@ -225,24 +326,11 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
             Text("Based on up to 500 recent checks. Gaps are unknown.", style = MaterialTheme.typography.bodySmall)
         }
         DetailSection(MaterialTheme.colorScheme.secondary) {
-            Text("Response time", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            if (filtered.size > 1) {
-                val points = filtered.take(60).asReversed()
-                val max = points.maxOf { it.responseMs }.coerceAtLeast(1)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.height(150.dp), verticalArrangement = Arrangement.SpaceBetween) {
-                        Text("$max ms", style = MaterialTheme.typography.labelSmall)
-                        Text("0 ms", style = MaterialTheme.typography.labelSmall)
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Graph(filtered, Modifier.weight(1f).height(150.dp))
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(points.first().time)), style = MaterialTheme.typography.labelSmall)
-                    Text(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(points.last().time)), style = MaterialTheme.typography.labelSmall)
-                }
-                Text("Last ${points.size} checks · evenly spaced", style = MaterialTheme.typography.bodySmall)
-            } else Text("At least two checks are needed.")
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Response time", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                IconButton(onClick = { openFullscreen("Response time") }) { Icon(Icons.Default.Fullscreen, "Fullscreen response time") }
+            }
+            ResponseChart(filtered, Modifier.fillMaxWidth().height(220.dp))
         }
         DetailSection(MaterialTheme.colorScheme.outline) {
             Text("Recent checks", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
@@ -282,20 +370,21 @@ private fun formatInterval(seconds: Int): String {
 
 @Composable fun ServiceEditor(existing: ServiceEntry?, modifier: Modifier = Modifier, onCancel: () -> Unit, onSave: (ServiceEntry) -> Unit) {
     var name by remember { mutableStateOf(existing?.name ?: "") }; var url by remember { mutableStateOf(existing?.url ?: "") }
-    var interval by remember { mutableIntStateOf(existing?.intervalSeconds ?: 60) }
+    var interval by remember { mutableIntStateOf(existing?.intervalSeconds?.coerceAtLeast(300) ?: 300) }
     val intervals = remember(existing?.intervalSeconds) {
-        (listOf(30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400) + listOfNotNull(existing?.intervalSeconds?.takeIf { it in 30..86400 })).distinct().sorted()
+        (listOf(300, 600, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400) + listOfNotNull(existing?.intervalSeconds?.takeIf { it in 300..86400 })).distinct().sorted()
     }
     var code by remember { mutableStateOf(existing?.expectedCode?.takeIf { it != 0 }?.toString() ?: "200") }
     var type by remember { mutableStateOf(existing?.bodyType ?: "None") }; var body by remember { mutableStateOf(existing?.expectedBody ?: "") }
     val status = code.toIntOrNull()
-    val valid = name.isNotBlank() && url.trim().toHttpUrlOrNull() != null && interval in 30..86400 && (status in 100..599) && (type == "None" || body.isNotBlank())
+    val valid = name.isNotBlank() && url.trim().toHttpUrlOrNull() != null && interval in 300..86400 && (status in 100..599) && (type == "None" || body.isNotBlank())
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         TextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true)
         TextField(url, { url = it }, Modifier.fillMaxWidth(), label = { Text("HTTP or HTTPS URL") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
         Text("Check interval: ${formatInterval(interval)}", style = MaterialTheme.typography.titleSmall)
         Slider(value = intervals.indexOf(interval).coerceAtLeast(0).toFloat(), onValueChange = { interval = intervals[it.roundToInt().coerceIn(intervals.indices)] }, valueRange = 0f..intervals.lastIndex.toFloat(), steps = intervals.size - 2)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("30 seconds"); Text("24 hours") }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("5 minutes"); Text("24 hours") }
+        if (interval < 900) Text("Frequent checks can increase battery drain, especially while your phone sleeps.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         TextField(code, { code = it }, Modifier.fillMaxWidth(), label = { Text("Status code") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
         Text("Expected response body")
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf("None", "Text", "JSON", "XML").forEach { choice -> FilterChip(selected = type == choice, onClick = { type = choice }, label = { Text(choice) }) } }

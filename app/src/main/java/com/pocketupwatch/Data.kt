@@ -24,11 +24,11 @@ data class CheckEntry(@PrimaryKey(autoGenerate = true) val id: Long = 0, val ser
         return true
     }
 }
-@Database(entities = [ServiceEntry::class, CheckEntry::class], version = 2, exportSchema = false)
+@Database(entities = [ServiceEntry::class, CheckEntry::class], version = 3, exportSchema = false)
 abstract class MonitorDb : RoomDatabase() {
     abstract fun dao(): MonitorDao
     companion object {
         @Volatile private var instance: MonitorDb? = null
-        fun get(context: Context): MonitorDb = instance ?: synchronized(this) { instance ?: Room.databaseBuilder(context.applicationContext, MonitorDb::class.java, "monitor.db").addMigrations(object : androidx.room.migration.Migration(1, 2) { override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) { db.execSQL("ALTER TABLE services ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1"); db.execSQL("ALTER TABLE services ADD COLUMN expectedCode INTEGER NOT NULL DEFAULT 0"); db.execSQL("ALTER TABLE services ADD COLUMN bodyType TEXT NOT NULL DEFAULT 'None'"); db.execSQL("ALTER TABLE services ADD COLUMN expectedBody TEXT NOT NULL DEFAULT ''") } }).build().also { instance = it } }
+        fun get(context: Context): MonitorDb = instance ?: synchronized(this) { instance ?: Room.databaseBuilder(context.applicationContext, MonitorDb::class.java, "monitor.db").addMigrations(object : androidx.room.migration.Migration(1, 2) { override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) { db.execSQL("ALTER TABLE services ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1"); db.execSQL("ALTER TABLE services ADD COLUMN expectedCode INTEGER NOT NULL DEFAULT 0"); db.execSQL("ALTER TABLE services ADD COLUMN bodyType TEXT NOT NULL DEFAULT 'None'"); db.execSQL("ALTER TABLE services ADD COLUMN expectedBody TEXT NOT NULL DEFAULT ''") } }, object : androidx.room.migration.Migration(2, 3) { override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) { db.execSQL("UPDATE services SET intervalSeconds = 300 WHERE intervalSeconds < 300") } }).build().also { instance = it } }
     }
 }

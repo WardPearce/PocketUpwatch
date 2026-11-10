@@ -5,6 +5,10 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import org.json.JSONTokener
@@ -31,6 +35,7 @@ class MonitorService : Service() {
     private val permits = Semaphore(4)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val client = OkHttpClient.Builder().callTimeout(20, TimeUnit.SECONDS).build()
+    private val checkLocks = ConcurrentHashMap<Long, Mutex>()
     private val running = mutableMapOf<Long, Job>()
     private val configs = mutableMapOf<Long, ServiceEntry>()
     override fun onCreate() {
@@ -45,6 +50,7 @@ class MonitorService : Service() {
             MonitorDb.get(this@MonitorService).dao().services().collect { services ->
                 val enabled = services.filter { it.enabled }
                 val ids = enabled.map { it.id }.toSet()
+                CheckAlarm.schedule(this@MonitorService, enabled.minOfOrNull { it.intervalSeconds })
                 running.keys.filter { it !in ids }.toList().forEach { running.remove(it)?.cancel(); configs.remove(it) }
                 enabled.forEach { service ->
                     if (configs[service.id] != service || running[service.id]?.isActive != true) {
@@ -82,9 +88,16 @@ class MonitorService : Service() {
         })
     }
     private suspend fun monitor(service: ServiceEntry) {
-        val dao = MonitorDb.get(this).dao()
         while (currentCoroutineContext().isActive) {
-            if (!online()) { delay(10_000); continue }
+            check(service, false)
+            delay(if (online()) service.intervalSeconds * 1000L else 10_000L)
+        }
+    }
+    private suspend fun check(service: ServiceEntry, onlyIfDue: Boolean) {
+        checkLocks.getOrPut(service.id) { Mutex() }.withLock {
+            val dao = MonitorDb.get(this).dao()
+            if (onlyIfDue && dao.latest(service.id)?.let { System.currentTimeMillis() - it.time < service.intervalSeconds * 1000L } == true) return@withLock
+            if (!online()) return@withLock
             val start = System.nanoTime()
             var up = false
             val detail = try {
@@ -96,21 +109,33 @@ class MonitorService : Service() {
                     "HTTP ${response.code}" + if (body == null) " · body exceeds 1 MiB" else if (!bodyOk) " · body mismatch" else ""
                 } }
             } catch (e: CancellationException) { throw e } catch (e: java.net.SocketTimeoutException) { "Timeout" } catch (e: javax.net.ssl.SSLException) { "TLS failure" } catch (e: IOException) { "DNS or connection failure" } catch (e: Exception) { "Check failed" }
-            if (!online()) { delay(10_000); continue }
+            if (!online()) return@withLock
             val elapsed = (System.nanoTime() - start) / 1_000_000
             val previous = dao.latest(service.id)
             currentCoroutineContext().ensureActive()
-            if (!dao.recordIfUnchanged(service, CheckEntry(serviceId = service.id, time = System.currentTimeMillis(), up = up, responseMs = elapsed, detail = detail))) return
+            if (!dao.recordIfUnchanged(service, CheckEntry(serviceId = service.id, time = System.currentTimeMillis(), up = up, responseMs = elapsed, detail = detail))) return@withLock
             currentCoroutineContext().ensureActive()
             if (previous != null && previous.up != up) {
                 val message = if (up) "${service.name} recovered" else "${service.name} is down"
                 val alert = NotificationCompat.Builder(this, "alerts").setSmallIcon(android.R.drawable.stat_notify_error).setContentTitle(message).setContentText(detail).setContentIntent(openIntent()).setAutoCancel(true).build()
                 getSystemService(NotificationManager::class.java).notify((service.id % Int.MAX_VALUE).toInt() + 2, alert)
             }
-            delay(service.intervalSeconds * 1000L)
         }
     }
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == CheckAlarm.ACTION_CHECK) {
+            val lock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PocketUpwatch:checks")
+            lock.acquire(120_000L)
+            scope.launch {
+                try {
+                    val enabled = MonitorDb.get(this@MonitorService).dao().allServices().filter { it.enabled }
+                    CheckAlarm.schedule(this@MonitorService, enabled.minOfOrNull { it.intervalSeconds })
+                    enabled.map { async { check(it, true) } }.awaitAll()
+                } finally { if (lock.isHeld) lock.release() }
+            }
+        }
+        return START_STICKY
+    }
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onDestroy() { active.value = false; scope.cancel(); super.onDestroy() }
 }
