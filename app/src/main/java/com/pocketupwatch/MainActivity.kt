@@ -97,7 +97,7 @@ class MainActivity : ComponentActivity() {
         "Allow unrestricted battery use to improve monitoring in the background. This may use more battery.",
         "Allow alarms and reminders to help schedule checks while your phone sleeps. Android may still delay checks."
     )
-    val advance = { if (step < 2) step++ else onComplete() }
+    val advance: () -> Unit = { if (step < 2) step++ else onComplete() }
     Scaffold { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Text("Set up Pocket Upwatch", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
