@@ -41,6 +41,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -76,6 +77,52 @@ import kotlin.math.roundToInt
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContent { val prefs = remember { getSharedPreferences("settings", MODE_PRIVATE) }; var mode by remember { mutableStateOf(prefs.getString("theme", "System") ?: "System") }; MaterialTheme(colorScheme = appColorScheme(mode)) { App(mode = mode, onMode = { mode = it; prefs.edit().putString("theme", it).apply() }) } } }
 }
+@Composable private fun Onboarding(onComplete: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var step by rememberSaveable { mutableIntStateOf(0) }
+    var refresh by remember { mutableIntStateOf(0) }
+    var notificationRequested by rememberSaveable { mutableStateOf(false) }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notificationRequested = true; refresh++ }
+    val settings = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { refresh++ }
+    val granted = remember(step, refresh) {
+        when (step) {
+            0 -> androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
+            1 -> context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+            else -> CheckAlarm.canScheduleExact(context)
+        }
+    }
+    val titles = listOf("Notifications", "Background monitoring", "Scheduled checks")
+    val descriptions = listOf(
+        "Allow notifications to see monitoring status and receive alerts when a service changes state.",
+        "Allow unrestricted battery use to improve monitoring in the background. This may use more battery.",
+        "Allow alarms and reminders to help schedule checks while your phone sleeps. Android may still delay checks."
+    )
+    val advance = { if (step < 2) step++ else onComplete() }
+    Scaffold { padding ->
+        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            Text("Set up Pocket Upwatch", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("Step ${step + 1} of 3", style = MaterialTheme.typography.labelLarge)
+            LinearProgressIndicator(progress = { (step + 1) / 3f }, modifier = Modifier.fillMaxWidth())
+            Text(titles[step], style = MaterialTheme.typography.headlineSmall)
+            Text(descriptions[step], style = MaterialTheme.typography.bodyLarge)
+            if (granted) Text("Already allowed", color = MaterialTheme.colorScheme.primary)
+            if (!granted) {
+                Button(onClick = {
+                    when (step) {
+                        0 -> if (Build.VERSION.SDK_INT >= 33 && !notificationRequested && androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        } else settings.launch(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+                        1 -> settings.launch(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")))
+                        2 -> if (Build.VERSION.SDK_INT >= 31) settings.launch(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}")))
+                    }
+                }, modifier = Modifier.fillMaxWidth()) { Text("Allow") }
+            }
+            Button(onClick = advance, modifier = Modifier.fillMaxWidth()) { Text(if (step == 2) "Finish" else "Continue") }
+            if (!granted) Text("You can continue without allowing this and change it later in settings.", style = MaterialTheme.typography.bodySmall)
+            if (step > 0) TextButton(onClick = { step-- }) { Text("Back") }
+        }
+    }
+}
 class MonitorViewModel(app: Application) : AndroidViewModel(app) {
     val dao = MonitorDb.get(app).dao()
     val services = dao.services()
@@ -92,19 +139,9 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
     var selected by remember { mutableStateOf<ServiceEntry?>(null) }
     val monitoringActive by MonitorService.active.collectAsState()
     var notificationsEnabled by remember { mutableStateOf(androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) }
-    var notificationRequestComplete by remember { mutableStateOf(Build.VERSION.SDK_INT < 33 || androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        notificationsEnabled = androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
-        notificationRequestComplete = true
-    }
-    LaunchedEffect(Unit) {
-        if (!notificationRequestComplete && Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS)
-    }
     var batteryUnrestricted by remember { mutableStateOf(context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)) }
     val batteryPrefs = remember { context.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE) }
-    var showBatteryPrompt by remember { mutableStateOf(!batteryUnrestricted && !batteryPrefs.getBoolean("battery_prompt_shown", false)) }
     var exactAlarmsAllowed by remember { mutableStateOf(CheckAlarm.canScheduleExact(context)) }
-    var showAlarmPrompt by remember { mutableStateOf(!exactAlarmsAllowed && !batteryPrefs.getBoolean("alarm_prompt_shown", false)) }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, exactAlarmsAllowed, monitoringActive) {
         val observer = LifecycleEventObserver { _, event ->
@@ -126,31 +163,22 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
             androidx.core.content.ContextCompat.startForegroundService(context, Intent(context, MonitorService::class.java))
         }
     }
-    if (showBatteryPrompt && notificationRequestComplete) {
-        AlertDialog(
-            onDismissRequest = { showBatteryPrompt = false; batteryPrefs.edit().putBoolean("battery_prompt_shown", true).apply() },
-            title = { Text("Allow background monitoring") },
-            text = { Text("Allow unrestricted battery use to improve monitoring while the app is in the background. This may use more battery, and uninterrupted checks cannot be guaranteed.") },
-            confirmButton = { TextButton(onClick = {
-                showBatteryPrompt = false
-                batteryPrefs.edit().putBoolean("battery_prompt_shown", true).apply()
-                context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")))
-            }) { Text("Continue") } },
-            dismissButton = { TextButton(onClick = { showBatteryPrompt = false; batteryPrefs.edit().putBoolean("battery_prompt_shown", true).apply() }) { Text("Not now") } }
-        )
-    }
-    if (showAlarmPrompt && !showBatteryPrompt && notificationRequestComplete && Build.VERSION.SDK_INT >= 31) {
-        AlertDialog(
-            onDismissRequest = { showAlarmPrompt = false; batteryPrefs.edit().putBoolean("alarm_prompt_shown", true).apply() },
-            title = { Text("Allow scheduled checks") },
-            text = { Text("Allow alarms and reminders so Pocket Upwatch can schedule checks while your phone sleeps. Android may still delay checks to save battery.") },
-            confirmButton = { TextButton(onClick = {
-                showAlarmPrompt = false
-                batteryPrefs.edit().putBoolean("alarm_prompt_shown", true).apply()
-                context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}")))
-            }) { Text("Continue") } },
-            dismissButton = { TextButton(onClick = { showAlarmPrompt = false; batteryPrefs.edit().putBoolean("alarm_prompt_shown", true).apply() }) { Text("Not now") } }
-        )
+    var onboardingComplete by remember { mutableStateOf(batteryPrefs.getBoolean("onboarding_complete", false)) }
+    if (!onboardingComplete) {
+        // Existing installations have already seen the old permission prompts.
+        if (loadedServices == null) return
+        if (services.isNotEmpty() || batteryPrefs.contains("battery_prompt_shown") || batteryPrefs.contains("alarm_prompt_shown")) {
+            LaunchedEffect(Unit) {
+                batteryPrefs.edit().putBoolean("onboarding_complete", true).apply()
+                onboardingComplete = true
+            }
+        } else {
+            Onboarding(onComplete = {
+                batteryPrefs.edit().putBoolean("onboarding_complete", true).apply()
+                onboardingComplete = true
+            })
+        }
+        return
     }
     val showingEditor = adding || editing != null
     val closeEditor = { adding = false; editing = null }
@@ -237,7 +265,7 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
             Text("${points.first().responseMs} ms · ${DateFormat.getDateTimeInstance().format(Date(points.first().time))}")
             return@Column
         }
-        val entries = remember(points) { points.map { entryOf((it.time - points.first().time) / 1000f, it.responseMs.toFloat()) }.distinctBy { it.x } }
+        val entries = remember(points) { points.map { entryOf(((it.time - points.first().time) / 1000L).toFloat(), it.responseMs.toFloat()) }.distinctBy { it.x } }
         if (entries.size < 2) { Text("${points.last().responseMs} ms"); return@Column }
         ProvideChartStyle(m3ChartStyle()) {
             Chart(chart = lineChart(), model = remember(entries) { entryModelOf(entries) },
