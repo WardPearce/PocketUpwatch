@@ -10,6 +10,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import android.os.Build
 import android.os.Bundle
+import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -33,6 +34,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
@@ -45,6 +52,7 @@ import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.text.DateFormat
 import java.util.Date
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContent { val prefs = remember { getSharedPreferences("settings", MODE_PRIVATE) }; var mode by remember { mutableStateOf(prefs.getString("theme", "System") ?: "System") }; val dark = when (mode) { "Dark" -> true; "Light" -> false; else -> isSystemInDarkTheme() }; val colors = if (Build.VERSION.SDK_INT >= 31) { if (dark) dynamicDarkColorScheme(this) else dynamicLightColorScheme(this) } else { if (dark) darkColorScheme() else lightColorScheme() }; MaterialTheme(colorScheme = colors) { App(mode = mode, onMode = { mode = it; prefs.edit().putString("theme", it).apply() }) } } }
@@ -99,8 +107,15 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
             dismissButton = { TextButton(onClick = { showBatteryPrompt = false; batteryPrefs.edit().putBoolean("battery_prompt_shown", true).apply() }) { Text("Not now") } }
         )
     }
-    Scaffold(topBar = { TopAppBar(title = { Text(if (selected == null) "Pocket Upwatch" else selected!!.name, fontWeight = FontWeight.Bold) }, navigationIcon = { if (selected != null) IconButton(onClick = { selected = null }) { Icon(Icons.Default.ArrowBack, "Back") } }) }, floatingActionButton = { if (selected == null) FloatingActionButton(onClick = { adding = true }) { Icon(Icons.Default.Add, "Add service") } }) { padding ->
-        if (selected != null) Detail(selected!!, vm, Modifier.padding(padding), onEdit = { editing = it }) { selected = null }
+    val showingEditor = adding || editing != null
+    val closeEditor = { adding = false; editing = null }
+    BackHandler(enabled = showingEditor || selected != null) { if (showingEditor) closeEditor() else selected = null }
+    Scaffold(topBar = { TopAppBar(title = { Text(when { adding -> "Add a service"; editing != null -> "Edit service"; selected != null -> selected!!.name; else -> "Pocket Upwatch" }, fontWeight = FontWeight.Bold) }, navigationIcon = { if (showingEditor || selected != null) IconButton(onClick = { if (showingEditor) closeEditor() else selected = null }) { Icon(Icons.Default.ArrowBack, "Back") } }) }, floatingActionButton = { if (selected == null && !showingEditor) FloatingActionButton(onClick = { adding = true }) { Icon(Icons.Default.Add, "Add service") } }) { padding ->
+        if (showingEditor) ServiceEditor(editing, Modifier.padding(padding), onCancel = closeEditor, onSave = { service ->
+            vm.save(service); closeEditor(); selected = if (service.id != 0L) service else null
+            if (service.enabled) { if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS); androidx.core.content.ContextCompat.startForegroundService(context, Intent(context, MonitorService::class.java)) }
+        })
+        else if (selected != null) Detail(selected!!, vm, Modifier.padding(padding), onEdit = { editing = it }) { selected = null }
         else LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -132,10 +147,7 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
             }) { selected = service } }
         }
     }
-    if (adding || editing != null) AddDialog(editing, onDismiss = { adding = false; editing = null }, onSave = { service ->
-        vm.save(service); adding = false; editing = null; selected = if (service.id != 0L) service else null
-        if (service.enabled) { if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS); androidx.core.content.ContextCompat.startForegroundService(context, Intent(context, MonitorService::class.java)) }
-    })
+
 }
 @Composable fun ServiceCard(service: ServiceEntry, vm: MonitorViewModel, onToggle: (Boolean) -> Unit, onClick: () -> Unit) {
     val history by remember(service.id) { vm.dao.history(service.id) }.collectAsState(initial = emptyList())
@@ -162,7 +174,7 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(if (latest == null) "No checks yet" else "${latest.responseMs} ms · ${latest.detail}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(if (latest == null) "Every ${service.intervalSeconds}s" else "Last check ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(latest.time))}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (latest == null) "Every ${formatInterval(service.intervalSeconds)}" else "Last check ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(latest.time))}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Switch(checked = service.enabled, onCheckedChange = onToggle)
             }
@@ -193,7 +205,7 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
                 Text(if (!service.enabled) "PAUSED" else if (!active) "STOPPED" else if (latest == null) "PENDING" else if (System.currentTimeMillis() - latest.time > maxOf(service.intervalSeconds * 2_000L, 120_000L)) "STALE" else if (latest.up) "UP" else "DOWN", style = MaterialTheme.typography.labelLarge, color = if (latest?.up == true && service.enabled) Color(0xff16835c) else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
                 Text(if (latest == null) "No checks yet" else "${latest.responseMs} ms", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Text(service.url, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-                Text("Every ${service.intervalSeconds}s", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Text("Every ${formatInterval(service.intervalSeconds)}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick = { onEdit(service) }) { Text("Edit service") }
             }
         }
@@ -258,19 +270,59 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 }
-@Composable fun AddDialog(existing: ServiceEntry?, onDismiss: () -> Unit, onSave: (ServiceEntry) -> Unit) {
-    var name by remember { mutableStateOf(existing?.name ?: "") }; var url by remember { mutableStateOf(existing?.url ?: "") }; var seconds by remember { mutableStateOf(existing?.intervalSeconds?.toString() ?: "60") }
-    var code by remember { mutableStateOf(existing?.expectedCode?.takeIf { it != 0 }?.toString() ?: "") }
+private fun formatInterval(seconds: Int): String {
+    val parts = listOf(3600 to "hour", 60 to "minute", 1 to "second")
+    var remaining = seconds
+    return parts.mapNotNull { (unit, label) ->
+        val count = remaining / unit
+        remaining %= unit
+        if (count == 0) null else "$count $label${if (count == 1) "" else "s"}"
+    }.joinToString(" ")
+}
+
+@Composable fun ServiceEditor(existing: ServiceEntry?, modifier: Modifier = Modifier, onCancel: () -> Unit, onSave: (ServiceEntry) -> Unit) {
+    var name by remember { mutableStateOf(existing?.name ?: "") }; var url by remember { mutableStateOf(existing?.url ?: "") }
+    var interval by remember { mutableIntStateOf(existing?.intervalSeconds ?: 60) }
+    val intervals = remember(existing?.intervalSeconds) {
+        (listOf(30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400) + listOfNotNull(existing?.intervalSeconds?.takeIf { it in 30..86400 })).distinct().sorted()
+    }
+    var code by remember { mutableStateOf(existing?.expectedCode?.takeIf { it != 0 }?.toString() ?: "200") }
     var type by remember { mutableStateOf(existing?.bodyType ?: "None") }; var body by remember { mutableStateOf(existing?.expectedBody ?: "") }
-    val interval = seconds.toIntOrNull(); val status = code.toIntOrNull()
-    val valid = name.isNotBlank() && url.toHttpUrlOrNull() != null && interval != null && interval in 30..86400 && (code.isBlank() || status in 100..599) && (type == "None" || body.isNotBlank())
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (existing == null) "Add a service" else "Edit service") }, text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true)
-        OutlinedTextField(url, { url = it }, label = { Text("HTTP or HTTPS URL") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
-        OutlinedTextField(seconds, { seconds = it }, label = { Text("Interval in seconds (30–86400)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-        OutlinedTextField(code, { code = it }, label = { Text("Expected HTTP code (blank: any 2xx)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+    val status = code.toIntOrNull()
+    val valid = name.isNotBlank() && url.trim().toHttpUrlOrNull() != null && interval in 30..86400 && (status in 100..599) && (type == "None" || body.isNotBlank())
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        TextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true)
+        TextField(url, { url = it }, Modifier.fillMaxWidth(), label = { Text("HTTP or HTTPS URL") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+        Text("Check interval: ${formatInterval(interval)}", style = MaterialTheme.typography.titleSmall)
+        Slider(value = intervals.indexOf(interval).coerceAtLeast(0).toFloat(), onValueChange = { interval = intervals[it.roundToInt().coerceIn(intervals.indices)] }, valueRange = 0f..intervals.lastIndex.toFloat(), steps = intervals.size - 2)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("30 seconds"); Text("24 hours") }
+        TextField(code, { code = it }, Modifier.fillMaxWidth(), label = { Text("Status code") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
         Text("Expected response body")
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf("None", "Text", "JSON", "XML").forEach { choice -> FilterChip(selected = type == choice, onClick = { type = choice }, label = { Text(choice) }) } }
-        if (type != "None") OutlinedTextField(body, { body = it }, label = { Text("Expected $type body") })
-    } }, confirmButton = { TextButton(enabled = valid, onClick = { onSave(ServiceEntry(id = existing?.id ?: 0, name = name.trim(), url = url.trim(), intervalSeconds = interval!!, enabled = existing?.enabled ?: true, expectedCode = status ?: 0, bodyType = type, expectedBody = body)) }) { Text("Save") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+        if (type != "None") {
+            val syntaxColor = MaterialTheme.colorScheme.primary
+            val syntax = remember(type, syntaxColor) {
+                VisualTransformation { input ->
+                    val styled = AnnotatedString.Builder(input)
+                    val pattern = when (type) {
+                        "JSON" -> Regex("\"(?:\\\\.|[^\"\\\\])*\"(?=\\s*:)|\\b(?:true|false|null)\\b")
+                        "XML" -> Regex("</?[A-Za-z_][A-Za-z0-9_.:-]*|/?>")
+                        else -> null
+                    }
+                    pattern?.findAll(input.text)?.forEach { match ->
+                        styled.addStyle(SpanStyle(color = syntaxColor, fontWeight = FontWeight.SemiBold), match.range.first, match.range.last + 1)
+                    }
+                    TransformedText(styled.toAnnotatedString(), OffsetMapping.Identity)
+                }
+            }
+            TextField(body, { body = it }, Modifier.fillMaxWidth(), label = { Text("Expected $type body") },
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                minLines = 6, maxLines = 14, keyboardOptions = KeyboardOptions(autoCorrect = false),
+                visualTransformation = syntax)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onCancel) { Text("Cancel") }
+            Button(enabled = valid, onClick = { onSave(ServiceEntry(id = existing?.id ?: 0, name = name.trim(), url = url.trim(), intervalSeconds = interval, enabled = existing?.enabled ?: true, expectedCode = status ?: 200, bodyType = type, expectedBody = body)) }) { Text("Save") }
+        }
+    }
 }
