@@ -45,6 +45,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.AnnotatedString
@@ -74,8 +76,22 @@ import kotlin.math.roundToInt
     } else if (dark) darkColorScheme() else lightColorScheme()
 }
 
+@Composable private fun ThemedSystemBars(activity: ComponentActivity) {
+    val surface = MaterialTheme.colorScheme.surface
+    SideEffect {
+        @Suppress("DEPRECATION")
+        activity.window.statusBarColor = surface.toArgb()
+        @Suppress("DEPRECATION")
+        activity.window.navigationBarColor = surface.toArgb()
+        WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+            isAppearanceLightStatusBars = surface.luminance() > 0.5f
+            isAppearanceLightNavigationBars = surface.luminance() > 0.5f
+        }
+    }
+}
+
 class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContent { val prefs = remember { getSharedPreferences("settings", MODE_PRIVATE) }; var mode by remember { mutableStateOf(prefs.getString("theme", "System") ?: "System") }; MaterialTheme(colorScheme = appColorScheme(mode)) { App(mode = mode, onMode = { mode = it; prefs.edit().putString("theme", it).apply() }) } } }
+    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContent { val prefs = remember { getSharedPreferences("settings", MODE_PRIVATE) }; var mode by remember { mutableStateOf(prefs.getString("theme", "System") ?: "System") }; MaterialTheme(colorScheme = appColorScheme(mode)) { ThemedSystemBars(this); App(mode = mode, onMode = { mode = it; prefs.edit().putString("theme", it).apply() }) } } }
 }
 @Composable private fun Onboarding(onComplete: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -295,6 +311,7 @@ class GraphActivity : ComponentActivity() {
             val filtered = history.filter { it.time >= System.currentTimeMillis() - hours * 3600_000L }
             val mode = remember { getSharedPreferences("settings", MODE_PRIVATE).getString("theme", "System") ?: "System" }
             MaterialTheme(colorScheme = appColorScheme(mode)) {
+                ThemedSystemBars(this)
                 Surface(Modifier.fillMaxSize()) {
                     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeContent).padding(horizontal = 16.dp, vertical = 8.dp)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -397,7 +414,13 @@ private fun formatInterval(seconds: Int): String {
 }
 
 @Composable fun ServiceEditor(existing: ServiceEntry?, modifier: Modifier = Modifier, onCancel: () -> Unit, onSave: (ServiceEntry) -> Unit) {
-    var name by remember { mutableStateOf(existing?.name ?: "") }; var url by remember { mutableStateOf(existing?.url ?: "") }
+    var name by remember { mutableStateOf(existing?.name ?: "") }
+    val initialProtocol = existing?.url?.substringBefore("://")?.lowercase()?.takeIf { it in listOf("http", "https", "tcp", "ping") } ?: "https"
+    var protocol by remember { mutableStateOf(initialProtocol) }
+    var target by remember { mutableStateOf(existing?.url?.substringAfter("://", existing.url) ?: "") }
+    var protocolMenu by remember { mutableStateOf(false) }
+    val url = "$protocol://${target.trim()}"
+    val isHttp = protocol == "http" || protocol == "https"
     var interval by remember { mutableIntStateOf(existing?.intervalSeconds?.coerceAtLeast(300) ?: 300) }
     val intervals = remember(existing?.intervalSeconds) {
         (listOf(300, 600, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400) + listOfNotNull(existing?.intervalSeconds?.takeIf { it in 300..86400 })).distinct().sorted()
@@ -405,14 +428,33 @@ private fun formatInterval(seconds: Int): String {
     var code by remember { mutableStateOf(existing?.expectedCode?.takeIf { it != 0 }?.toString() ?: "200") }
     var type by remember { mutableStateOf(existing?.bodyType ?: "None") }; var body by remember { mutableStateOf(existing?.expectedBody ?: "") }
     val status = code.toIntOrNull()
-    val valid = name.isNotBlank() && url.trim().toHttpUrlOrNull() != null && interval in 300..86400 && (status in 100..599) && (type == "None" || body.isNotBlank())
+    val valid = name.isNotBlank() && MonitorTarget.parse(url) != null && (!isHttp || url.toHttpUrlOrNull() != null) && interval in 300..86400 && (!isHttp || (status in 100..599 && (type == "None" || body.isNotBlank())))
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         TextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true)
-        TextField(url, { url = it }, Modifier.fillMaxWidth(), label = { Text("HTTP or HTTPS URL") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box {
+                OutlinedButton(onClick = { protocolMenu = true }, contentPadding = PaddingValues(horizontal = 10.dp)) { Text(protocol.uppercase()); Icon(Icons.Default.ArrowDropDown, "Choose protocol") }
+                DropdownMenu(expanded = protocolMenu, onDismissRequest = { protocolMenu = false }) {
+                    listOf("https", "http", "tcp", "ping").forEach { choice ->
+                        DropdownMenuItem(text = { Text(choice.uppercase()) }, onClick = { protocol = choice; protocolMenu = false })
+                    }
+                }
+            }
+            TextField(target, { input ->
+                val pastedProtocol = input.substringBefore("://").lowercase()
+                if (input.contains("://") && pastedProtocol in listOf("http", "https", "tcp", "ping")) {
+                    protocol = pastedProtocol
+                    target = input.substringAfter("://")
+                } else target = input
+            }, Modifier.weight(1f), label = { Text(if (protocol == "tcp") "Host:port" else if (protocol == "ping") "Host" else "Host and path") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+        }
+        if (protocol == "ping") Text("ICMP echo checks host reachability. Some networks and hosts block ping.", style = MaterialTheme.typography.bodySmall)
+        if (protocol == "tcp") Text("Checks whether a TCP connection can be opened to the host and port.", style = MaterialTheme.typography.bodySmall)
         Text("Check interval: ${formatInterval(interval)}", style = MaterialTheme.typography.titleSmall)
         Slider(value = intervals.indexOf(interval).coerceAtLeast(0).toFloat(), onValueChange = { interval = intervals[it.roundToInt().coerceIn(intervals.indices)] }, valueRange = 0f..intervals.lastIndex.toFloat(), steps = intervals.size - 2)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("5 minutes"); Text("24 hours") }
         if (interval < 900) Text("Frequent checks can increase battery drain, especially while your phone sleeps.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        if (isHttp) {
         TextField(code, { code = it }, Modifier.fillMaxWidth(), label = { Text("Status code") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
         Text("Expected response body")
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf("None", "Text", "JSON", "XML").forEach { choice -> FilterChip(selected = type == choice, onClick = { type = choice }, label = { Text(choice) }) } }
@@ -437,9 +479,10 @@ private fun formatInterval(seconds: Int): String {
                 minLines = 6, maxLines = 14, keyboardOptions = KeyboardOptions(autoCorrect = false),
                 visualTransformation = syntax)
         }
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             TextButton(onClick = onCancel) { Text("Cancel") }
-            Button(enabled = valid, onClick = { onSave(ServiceEntry(id = existing?.id ?: 0, name = name.trim(), url = url.trim(), intervalSeconds = interval, enabled = existing?.enabled ?: true, expectedCode = status ?: 200, bodyType = type, expectedBody = body)) }) { Text("Save") }
+            Button(enabled = valid, onClick = { onSave(ServiceEntry(id = existing?.id ?: 0, name = name.trim(), url = url, intervalSeconds = interval, enabled = existing?.enabled ?: true, expectedCode = status ?: 200, bodyType = type, expectedBody = body)) }) { Text("Save") }
         }
     }
 }

@@ -6,8 +6,8 @@ android {
         applicationId = "io.github.wardpearce.pocketupwatch"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.0.3"
+        versionCode = 4
+        versionName = "0.0.4"
     }
     signingConfigs {
         create("release") {
@@ -33,6 +33,7 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     val composeBom = platform("androidx.compose:compose-bom:2024.09.03")
     implementation(composeBom)
     implementation("com.patrykandpatrick.vico:compose-m3:1.15.0")
