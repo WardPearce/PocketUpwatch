@@ -379,8 +379,40 @@ class GraphActivity : ComponentActivity() {
         }
         DetailSection(MaterialTheme.colorScheme.outline) {
             Text("Recent checks", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            if (history.isEmpty()) Text("No checks yet.")
-            history.take(50).forEach { check -> Text("${if (check.up) "UP" else "DOWN"}  ·  ${check.responseMs} ms  ·  ${check.detail}\n${DateFormat.getDateTimeInstance().format(Date(check.time))}", style = MaterialTheme.typography.bodyMedium); HorizontalDivider() }
+            if (history.isEmpty()) Text("No checks yet.") else {
+                var sort by rememberSaveable(service.id) { mutableStateOf("Newest first") }
+                var sortMenu by remember { mutableStateOf(false) }
+                val checks = remember(history, sort) {
+                    val recent = history.take(50)
+                    when (sort) {
+                        "Oldest first" -> recent.reversed()
+                        "Fastest first" -> recent.sortedBy { it.responseMs }
+                        "Slowest first" -> recent.sortedByDescending { it.responseMs }
+                        "Down first" -> recent.sortedBy { it.up }
+                        else -> recent
+                    }
+                }
+                Box {
+                    OutlinedButton(onClick = { sortMenu = true }) {
+                        Text("Sort: $sort")
+                        Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                    }
+                    DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                        listOf("Newest first", "Oldest first", "Fastest first", "Slowest first", "Down first").forEach { option ->
+                            DropdownMenuItem(text = { Text(option) }, onClick = { sort = option; sortMenu = false })
+                        }
+                    }
+                }
+                val checksScroll = rememberScrollState()
+                LaunchedEffect(sort, service.id) { checksScroll.scrollTo(0) }
+                Text("Showing up to 50 recent checks", style = MaterialTheme.typography.bodySmall)
+                Column(Modifier.fillMaxWidth().heightIn(max = 300.dp).verticalScroll(checksScroll), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    checks.forEachIndexed { index, check ->
+                        Text("${if (check.up) "UP" else "DOWN"}  ·  ${check.responseMs} ms  ·  ${check.detail}\n${DateFormat.getDateTimeInstance().format(Date(check.time))}", style = MaterialTheme.typography.bodyMedium)
+                        if (index < checks.lastIndex) HorizontalDivider()
+                    }
+                }
+            }
         }
         OutlinedButton(onClick = { confirm = true }) { Text("Delete service") }
     }
