@@ -29,11 +29,12 @@ internal fun formatInterval(seconds: Int): String {
     ).joinToString(" ").ifEmpty { "0sec" }
 }
 
-@Composable internal fun ProtocolPicker(protocol: String, onChange: (String) -> Unit) {
+@Composable internal fun ProtocolPicker(protocol: String, enabled: Boolean = true, onChange: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         OutlinedButton(
             onClick = { expanded = true },
+            enabled = enabled,
             modifier = Modifier.heightIn(min = 56.dp).semantics { contentDescription = "Protocol" },
             contentPadding = PaddingValues(horizontal = 12.dp)
         ) {
@@ -48,7 +49,7 @@ internal fun formatInterval(seconds: Int): String {
     }
 }
 
-@Composable internal fun IntervalSlider(seconds: Int, originalSeconds: Int?, onChange: (Int) -> Unit) {
+@Composable internal fun IntervalSlider(seconds: Int, originalSeconds: Int?, enabled: Boolean = true, onChange: (Int) -> Unit) {
     val intervals = remember(originalSeconds) {
         (listOf(300, 600, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400) +
             listOfNotNull(originalSeconds?.takeIf { it in 300..86400 })).distinct().sorted()
@@ -56,6 +57,7 @@ internal fun formatInterval(seconds: Int): String {
     Column(Modifier.fillMaxWidth()) {
         Text("Check interval: ${formatInterval(seconds)}", style = MaterialTheme.typography.titleSmall)
         Slider(
+            enabled = enabled,
             value = intervals.indexOf(seconds).coerceAtLeast(0).toFloat(),
             onValueChange = { onChange(intervals[it.roundToInt().coerceIn(intervals.indices)]) },
             valueRange = 0f..intervals.lastIndex.toFloat(),

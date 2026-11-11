@@ -32,3 +32,4 @@ jobs:
             app/build/test-results/testDebugUnitTest/
             app/build/reports/lint-results-debug.*
             app/build/outputs/apk/debug/*.apk
+            app/build/outputs/editor-preview/*.png

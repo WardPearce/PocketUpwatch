@@ -6,6 +6,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.automirrored.outlined.FactCheck
+import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -52,7 +56,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
     var bearer by remember(existing?.id) { mutableStateOf(if (authMode == "Bearer") authorization.removePrefix("Bearer ") else "") }
     var timeout by rememberSaveable(existing?.id) { mutableStateOf((existing?.timeoutSeconds ?: 20).toString()) }
     var redirects by rememberSaveable(existing?.id) { mutableStateOf(existing?.followRedirects ?: true) }
-    var validated by rememberSaveable(existing?.id) { mutableStateOf(existing?.requireValidatedInternet ?: false) }
+    var validated by rememberSaveable(existing?.id) { mutableStateOf(existing?.requireValidatedInternet ?: true) }
     var failures by rememberSaveable(existing?.id) { mutableStateOf((existing?.failureThreshold ?: 1).toString()) }
     var recoveries by rememberSaveable(existing?.id) { mutableStateOf((existing?.recoveryThreshold ?: 1).toString()) }
     var initialDown by rememberSaveable(existing?.id) { mutableStateOf(existing?.notifyInitialDown ?: true) }
@@ -93,87 +97,120 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
             draft.copy(url = parsedUrl?.newBuilder()?.username("")?.password("")?.build()?.toString() ?: url, headersCiphertext = secrets.encrypt(headers))
         }
     }
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        TextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true)
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+    val scroll = rememberScrollState()
+    val bodyValidation = remember(bodyType, expectedBody, jsonPath) { BodyMatcher.validate(bodyType, expectedBody, jsonPath) }
+    Column(modifier.fillMaxSize().imePadding()) {
+        Column(
+            Modifier.weight(1f).verticalScroll(scroll).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            ProtocolPicker(protocol) { protocol = it }
-            TextField(target, { input ->
-                val pasted = input.substringBefore("://").lowercase()
-                if (input.contains("://") && pasted in listOf("http", "https", "tcp", "ping", "dns", "tls")) {
-                    protocol = pasted
-                    target = input.substringAfter("://")
-                } else target = input
-            }, Modifier.weight(1f), label = { Text(if (protocol == "tcp") "Host:port" else if (protocol == "tls") "Host or host:port" else if (http) "Host, path and query" else "Host") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
-        }
-        TextField(tags, { tags = it }, Modifier.fillMaxWidth(), label = { Text("Tags (comma separated)") })
-        IntervalSlider(interval, existing?.intervalSeconds) { interval = it }
-        TextField(timeout, { timeout = it }, label = { Text("Timeout in seconds (1–60)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-        SwitchRow("Require validated internet", validated) { validated = it }
-        Text("Leave off for private LAN targets. Without validated internet, public target failures can reflect your network.", style = MaterialTheme.typography.bodySmall)
-        if (http) {
-            ChoiceMenu("HTTP method", method, listOf("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE")) { method = it; if (it == "HEAD") bodyType = "None" }
-            SwitchRow("Accept any 2xx status", anySuccess) { anySuccess = it }
-            if (!anySuccess) TextField(status, { status = it }, label = { Text("Expected HTTP status") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-            SwitchRow("Follow redirects", redirects) { redirects = it }
-            ChoiceMenu("Authentication", authMode, listOf("None", "Bearer", "Basic")) { authMode = it }
-            if (authMode == "Bearer") TextField(bearer, { bearer = it }, Modifier.fillMaxWidth(), label = { Text("Bearer token") }, visualTransformation = PasswordVisualTransformation())
-            if (authMode == "Basic") {
-                TextField(username, { username = it }, Modifier.fillMaxWidth(), label = { Text("Username") })
-                TextField(password, { password = it }, Modifier.fillMaxWidth(), label = { Text("Password") }, visualTransformation = PasswordVisualTransformation())
-            }
-            TextField(headersText, { headersText = it }, Modifier.fillMaxWidth(), minLines = 2, maxLines = 6, label = { Text("Custom headers (Header: value)") }, visualTransformation = PasswordVisualTransformation())
-            Text("Headers and credentials are encrypted on this device. They are included only in password-encrypted backups.", style = MaterialTheme.typography.bodySmall)
-            if (loadedHeaders.isFailure) SwitchRow("Clear inaccessible saved credentials", clearBrokenCredentials) { clearBrokenCredentials = it }
-            if (method in listOf("POST", "PUT", "PATCH")) TextField(requestBody, { requestBody = it }, Modifier.fillMaxWidth(), minLines = 3, maxLines = 8, label = { Text("Request body") })
-            if (method != "HEAD") ChoiceMenu("Response body match", bodyType, listOf("None", "Text", "JSON", "XML")) { bodyType = it }
-            if (bodyType != "None") TextField(expectedBody, { expectedBody = it }, Modifier.fillMaxWidth(), minLines = 3, maxLines = 8, label = { Text("Expected $bodyType value") })
-            if (bodyType == "JSON") TextField(jsonPath, { jsonPath = it }, Modifier.fillMaxWidth(), label = { Text("JSON path (optional, e.g. $.status)") }, supportingText = { Text("Expected value must be valid JSON, e.g. \"ok\". Leave path blank to compare the full document.") })
-        }
-        if (protocol == "dns") TextField(dnsExpected, { dnsExpected = it }, Modifier.fillMaxWidth(), label = { Text("Expected IP addresses (optional, comma separated)") })
-        if (protocol == "tls") TextField(warningDays, { warningDays = it }, Modifier.fillMaxWidth(), label = { Text("Warn when certificate expires within days") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-        if (protocol == "ping") Text("Some hosts and networks block ICMP echo requests.", style = MaterialTheme.typography.bodySmall)
-        Text("Alert rules", style = MaterialTheme.typography.titleLarge)
-        TextField(failures, { failures = it }, label = { Text("Consecutive failures before down (1–20)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-        TextField(recoveries, { recoveries = it }, label = { Text("Consecutive successes before recovery (1–20)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-        SwitchRow("Alert when first observed state is down", initialDown) { initialDown = it }
-        TextField(repeat, { repeat = it }, label = { Text("Repeat down alert after minutes (0 = off)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-        ChoiceMenu("Maintenance", if (maintenance > System.currentTimeMillis()) "Until ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(maintenance))}" else "Off", listOf("Off", "1 hour", "4 hours", "24 hours")) { maintenance = when (it) { "1 hour" -> 1L; "4 hours" -> 4L; "24 hours" -> 24L; else -> 0L }.let { h -> if (h == 0L) 0 else System.currentTimeMillis() + h * 3_600_000 } }
-        Text("Maintenance records unknown skips and suspends endpoint alerts.", style = MaterialTheme.typography.bodySmall)
-        validation?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        actionError?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-        }
-        Text("Save checks the target first. If the check fails, fix the error and try again.", style = MaterialTheme.typography.bodySmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TextButton(onClick = onCancel) { Text("Cancel") }
-            Button(enabled = validation == null && !busy, onClick = {
-                busy = true
-                actionError = null
-                scope.launch {
-                    var saving = false
-                    try {
-                        val service = prepared()
-                        val result = withContext(Dispatchers.IO) {
-                            probe?.execute(service) ?: ProbeEngine.runner(context).run(service)
-                        }
-                        if (result.up == true) {
-                            saving = true
-                            onSave(service)
-                        } else actionError = "Check failed: ${result.detail}"
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        actionError = if (saving) "Could not save the monitor. Please try again." else "Could not test the monitor. Please try again."
-                    } finally { busy = false }
+            Text(
+                if (existing == null) "Start with a name and target. Adjust the other settings when you need them." else "Update your target or fine-tune how this service is monitored.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            EditorSection("Service details", "What would you like to monitor?", Icons.Outlined.Dns) {
+                OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Name") }, placeholder = { Text("e.g. Production API") }, singleLine = true)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    ProtocolPicker(protocol, enabled = !busy) { protocol = it }
+                    OutlinedTextField(target, { input ->
+                        val pasted = input.substringBefore("://").lowercase()
+                        if (input.contains("://") && pasted in listOf("http", "https", "tcp", "ping", "dns", "tls")) {
+                            protocol = pasted
+                            target = input.substringAfter("://")
+                        } else target = input
+                    }, Modifier.weight(1f), enabled = !busy, label = { Text(if (protocol == "tcp") "Host:port" else if (protocol == "tls") "Host or host:port" else if (http) "Host, path and query" else "Host") }, placeholder = { Text(if (protocol == "tcp") "example.com:443" else "example.com") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
                 }
-            }) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (busy) CircularProgressIndicator(Modifier.size(16.dp).testTag("save-progress"), color = LocalContentColor.current, strokeWidth = 2.dp)
-                    Text(if (busy) "Checking…" else "Save")
+                Text(when (protocol) {
+                    "tcp" -> "Checks whether a connection can be opened to this port."
+                    "ping" -> "Checks host reachability. Some hosts and networks block ping."
+                    "dns" -> "Resolves this host and optionally verifies its IP addresses."
+                    "tls" -> "Checks certificate trust, hostname and expiry."
+                    else -> "Checks the HTTP response from this address."
+                }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            EditorSection("Monitoring", "Choose when checks run and which network they use.", Icons.Outlined.Schedule) {
+                IntervalSlider(interval, existing?.intervalSeconds, enabled = !busy) { interval = it }
+                HorizontalDivider()
+                EditorToggle("Require Internet", "Only check when Android confirms Internet access. Turn off for services on your local network.", validated, !busy) { validated = it }
+            }
+            EditorSection("Request settings", if (http) "$method · ${timeout}s timeout" else "${timeout}s timeout", Icons.Outlined.Tune, collapsible = true, enabled = !busy) {
+                if (http) EditorDropdown("HTTP method", method, listOf("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"), !busy) { method = it; if (it == "HEAD") bodyType = "None" }
+                OutlinedTextField(timeout, { timeout = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Timeout (seconds)") }, supportingText = { Text("Between 1 and 60 seconds") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                if (http) {
+                    EditorToggle("Follow redirects", "Check the final destination when a server redirects the request.", redirects, !busy) { redirects = it }
+                    if (method in listOf("POST", "PUT", "PATCH")) OutlinedTextField(requestBody, { requestBody = it }, Modifier.fillMaxWidth(), enabled = !busy, minLines = 3, maxLines = 8, label = { Text("Request body") })
+                }
+            }
+            if (http) {
+                EditorSection("Response rules", "${if (anySuccess) "Any 2xx status" else "HTTP $status"} · ${if (bodyType == "None") "No body match" else "$bodyType match"}", Icons.AutoMirrored.Outlined.FactCheck, collapsible = true, initiallyExpanded = bodyType != "None" && bodyValidation != null, enabled = !busy) {
+                    EditorToggle("Accept any 2xx status", "Treat any successful HTTP status as healthy.", anySuccess, !busy) { anySuccess = it }
+                    if (!anySuccess) OutlinedTextField(status, { status = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Expected HTTP status") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    if (method != "HEAD") EditorDropdown("Response body match", bodyType, listOf("None", "Text", "JSON", "XML"), !busy) { bodyType = it }
+                    if (bodyType != "None") OutlinedTextField(expectedBody, { expectedBody = it }, Modifier.fillMaxWidth(), enabled = !busy, minLines = 3, maxLines = 8, isError = bodyValidation != null, label = { Text("Expected $bodyType value") })
+                    if (bodyType == "JSON") OutlinedTextField(jsonPath, { jsonPath = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("JSON path (optional, e.g. $.status)") }, supportingText = { Text("Use valid JSON for the expected value, such as \"ok\". A blank path compares the full document.") })
+                }
+                EditorSection("Authentication & headers", if (loadedHeaders.isFailure && !clearBrokenCredentials) "Saved credentials need attention" else if (authMode == "None" && headersText.isBlank()) "No authentication or custom headers" else "$authMode authentication · ${headersText.lineSequence().count { it.isNotBlank() }} custom headers", Icons.Outlined.Lock, collapsible = true, initiallyExpanded = loadedHeaders.isFailure, enabled = !busy) {
+                    EditorDropdown("Authentication", authMode, listOf("None", "Bearer", "Basic"), !busy) { authMode = it }
+                    if (authMode == "Bearer") OutlinedTextField(bearer, { bearer = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Bearer token") }, visualTransformation = PasswordVisualTransformation())
+                    if (authMode == "Basic") {
+                        OutlinedTextField(username, { username = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Username") })
+                        OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation())
+                    }
+                    OutlinedTextField(headersText, { headersText = it }, Modifier.fillMaxWidth(), enabled = !busy, minLines = 2, maxLines = 6, label = { Text("Custom headers (Header: value)") }, visualTransformation = PasswordVisualTransformation())
+                    Text("Headers and credentials are encrypted on this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (loadedHeaders.isFailure) EditorToggle("Clear inaccessible saved credentials", "Replace credentials that this device can no longer decrypt.", clearBrokenCredentials, !busy) { clearBrokenCredentials = it }
+                }
+            }
+            if (protocol == "dns") EditorSection("DNS answers", if (dnsExpected.isBlank()) "Accept any resolved IP address" else "Check expected IP addresses", Icons.AutoMirrored.Outlined.FactCheck, collapsible = true, enabled = !busy) {
+                OutlinedTextField(dnsExpected, { dnsExpected = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Expected IP addresses") }, supportingText = { Text("Optional. Separate IPv4 or IPv6 addresses with commas.") })
+            }
+            if (protocol == "tls") EditorSection("Certificate expiry", "Warn within $warningDays days of expiry", Icons.Outlined.VerifiedUser, collapsible = true, enabled = !busy) {
+                OutlinedTextField(warningDays, { warningDays = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Expiry warning (days)") }, supportingText = { Text("Between 0 and 365 days") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+            }
+            EditorSection("Alerts & maintenance", "$failures ${if (failures == "1") "failure" else "failures"} to mark down · ${if (maintenance > System.currentTimeMillis()) "Maintenance on" else "Maintenance off"}", Icons.Outlined.Notifications, collapsible = true, enabled = !busy) {
+                Text("State changes", style = MaterialTheme.typography.titleSmall)
+                OutlinedTextField(failures, { failures = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Failures before DOWN") }, supportingText = { Text("Consecutive failed checks, from 1 to 20") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                OutlinedTextField(recoveries, { recoveries = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Successes before UP") }, supportingText = { Text("Consecutive successful checks, from 1 to 20") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                EditorToggle("Alert when first observed state is down", "Notify even if the service has never been observed up.", initialDown, !busy) { initialDown = it }
+                OutlinedTextField(repeat, { repeat = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Repeat down alert (minutes)") }, supportingText = { Text("Set to 0 to turn reminders off") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                HorizontalDivider()
+                EditorDropdown("Maintenance", if (maintenance > System.currentTimeMillis()) "Until ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(maintenance))}" else "Off", listOf("Off", "1 hour", "4 hours", "24 hours"), !busy) {
+                    maintenance = when (it) { "1 hour" -> 1L; "4 hours" -> 4L; "24 hours" -> 24L; else -> 0L }.let { h -> if (h == 0L) 0 else System.currentTimeMillis() + h * 3_600_000 }
+                }
+                Text("Maintenance skips checks and pauses endpoint alerts.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            EditorSection("Organization", if (tags.isBlank()) "Add optional tags" else tags, Icons.AutoMirrored.Outlined.Label, collapsible = true, enabled = !busy) {
+                OutlinedTextField(tags, { tags = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Tags (comma separated)") }, placeholder = { Text("production, api") })
+            }
+        }
+        Surface(tonalElevation = 3.dp, shadowElevation = 4.dp) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val message = actionError ?: validation?.takeIf { name.isNotBlank() && target.isNotBlank() }
+                if (message != null) Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                else Text(if (name.isBlank() || target.isBlank()) "Add a name and target to enable Save." else "Your target is checked before saving.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    Button(enabled = validation == null && !busy, modifier = Modifier.weight(2f), onClick = {
+                        busy = true
+                        actionError = null
+                        scope.launch {
+                            var saving = false
+                            try {
+                                val service = prepared()
+                                val result = withContext(Dispatchers.IO) { probe?.execute(service) ?: ProbeEngine.runner(context).run(service) }
+                                if (result.up == true) { saving = true; onSave(service) }
+                                else actionError = "Check failed: ${result.detail}"
+                            } catch (e: CancellationException) { throw e }
+                            catch (_: Exception) { actionError = if (saving) "Could not save the monitor. Please try again." else "Could not test the monitor. Please try again." }
+                            finally { busy = false }
+                        }
+                    }) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (busy) CircularProgressIndicator(Modifier.size(16.dp).testTag("save-progress"), color = LocalContentColor.current, strokeWidth = 2.dp)
+                            Text(if (busy) "Checking…" else "Save")
+                        }
+                    }
                 }
             }
         }
@@ -181,5 +218,5 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 }
 
 @Composable internal fun SwitchRow(label: String, checked: Boolean, changed: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text(label, Modifier.weight(1f)); Switch(checked, changed) }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(label, Modifier.weight(1f)); Switch(checked, changed) }
 }

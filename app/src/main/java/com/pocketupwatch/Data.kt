@@ -18,7 +18,8 @@ data class ServiceEntry(
     @ColumnInfo(defaultValue = "''") val jsonPath: String = "",
     @ColumnInfo(defaultValue = "20") val timeoutSeconds: Int = 20,
     @ColumnInfo(defaultValue = "1") val followRedirects: Boolean = true,
-    @ColumnInfo(defaultValue = "0") val requireValidatedInternet: Boolean = false,
+    // The legacy SQL default remains unchanged; new monitors explicitly insert true.
+    @ColumnInfo(defaultValue = "0") val requireValidatedInternet: Boolean = true,
     // Preserve the v4 SQL schema; every new monitor explicitly inserts the application default of 1.
     @ColumnInfo(defaultValue = "2") val failureThreshold: Int = 1,
     @ColumnInfo(defaultValue = "1") val recoveryThreshold: Int = 1,
