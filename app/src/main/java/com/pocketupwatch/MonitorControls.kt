@@ -1,6 +1,9 @@
 package com.pocketupwatch
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
@@ -79,5 +82,21 @@ internal fun formatInterval(seconds: Int): String {
             )
             Text(if (checking) "Checking…" else "Check now")
         }
+    }
+}
+
+@Composable internal fun StatusBadge(status: String) {
+    val tint = when (status) {
+        "UP" -> Color(0xff16835c)
+        "DOWN" -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = tint.copy(alpha = 0.10f),
+        contentColor = tint,
+        border = BorderStroke(1.dp, tint.copy(alpha = 0.45f))
+    ) {
+        Text(status, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
     }
 }

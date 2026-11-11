@@ -4,8 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MonitoringRulesTest {
-    private val service = ServiceEntry(id = 1, name = "API", url = "https://example.com", intervalSeconds = 300)
+    private val service = ServiceEntry(id = 1, name = "API", url = "https://example.com", intervalSeconds = 300, failureThreshold = 2)
     private fun check(up: Boolean, time: Long = 1_000, skipped: Boolean = false) = CheckEntry(serviceId = 1, time = time, up = up, responseMs = 10, detail = "test", skipped = skipped)
+    @Test fun newMonitorsAreDownAfterOneFailedCheckByDefault() {
+        val monitor = ServiceEntry(id = 1, name = "API", url = "https://example.com", intervalSeconds = 300)
+        assertEquals(1, monitor.failureThreshold)
+        val decision = AlertPolicy.evaluate(AlertState(1, confirmed = "UP"), monitor, check(false))
+        assertEquals("DOWN", decision.state.confirmed)
+        assertEquals("is down", decision.notification)
+    }
     @Test fun jsonComparisonIsStructuralAndTypeAware() {
         assertTrue(BodyMatcher.matches("JSON", "{\"b\":2,\"a\":[1,{\"ok\":true}]}", "{\"a\":[1,{\"ok\":true}],\"b\":2}"))
         assertFalse(BodyMatcher.matches("JSON", "\"1\"", "1"))

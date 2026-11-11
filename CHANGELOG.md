@@ -2,6 +2,11 @@
 
 ## 0.1.1
 
+- Default new monitors to DOWN after one failed check; preserve existing configured thresholds.
+- Replace the separate test action with a save-time check that shows failures and keeps unsaved edits available.
+- Display status labels in tinted badges with matching borders.
+- Organize service details into separate status, target, schedule, and action cards.
+
 - Separate monitor status labels from the pause/resume switch.
 - Show a loading spinner and disable Check now while a check is queued or running, including checks performed by the foreground service.
 - Restore the interval slider with readable labels such as 5min and 2hours; preserve custom intervals when editing.

@@ -19,7 +19,7 @@ class MonitorDatabaseTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val db = Room.inMemoryDatabaseBuilder(context, MonitorDb::class.java).allowMainThreadQueries().build()
     private val dao = db.dao()
-    private val template = ServiceEntry(name = "API", url = "https://example.com", intervalSeconds = 300)
+    private val template = ServiceEntry(name = "API", url = "https://example.com", intervalSeconds = 300, failureThreshold = 2)
     @After fun close() { db.close() }
     @Test fun longRangeStatisticsIncludeChecksOlderThanFiveHundredSamples() = runBlocking {
         val id = dao.add(template)

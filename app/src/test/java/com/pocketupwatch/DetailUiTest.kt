@@ -24,6 +24,11 @@ class DetailUiTest {
         val vm = MonitorViewModel(ApplicationProvider.getApplicationContext<Application>())
         MonitorService.checksInProgress.value = emptySet()
         compose.setContent { MaterialTheme { Detail(service, vm, Modifier, onEdit = {}, onDeleted = {}) } }
+        compose.onNodeWithTag("service-status").assertExists()
+        compose.onNodeWithTag("service-target").assertExists()
+        compose.onNodeWithTag("service-schedule").assertExists()
+        compose.onNodeWithTag("service-actions").assertExists()
+        compose.onNodeWithText("Next check").assertExists()
         compose.onNodeWithText("Check now").performScrollTo().performClick()
         compose.onNodeWithTag("check-progress", useUnmergedTree = true).assertExists()
         compose.onNodeWithText("Checking…").assertIsNotEnabled()
