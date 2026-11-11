@@ -24,11 +24,19 @@ internal object ConnectivityPolicy {
 class MonitorService : Service() {
     companion object {
         val active = MutableStateFlow(false)
+        val checksInProgress = MutableStateFlow<Set<Long>>(emptySet())
         const val ACTION_RUN = "com.pocketupwatch.RUN_NOW"
         fun start(context: Context, id: Long? = null) {
             val intent = Intent(context, MonitorService::class.java)
-            if (id != null) intent.setAction(ACTION_RUN).putExtra("serviceId", id)
-            ContextCompat.startForegroundService(context, intent)
+            if (id != null) {
+                intent.setAction(ACTION_RUN).putExtra("serviceId", id)
+                checksInProgress.value += id
+            }
+            try { ContextCompat.startForegroundService(context, intent) }
+            catch (e: Exception) {
+                if (id != null) checksInProgress.value -= id
+                throw e
+            }
         }
     }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -76,7 +84,8 @@ class MonitorService : Service() {
                 val dao = MonitorDb.get(this).dao()
                 val enabled = dao.allServices().filter { it.enabled }
                 val ids = enabled.map { it.id }.toSet()
-                (configs.keys - ids).forEach { id -> running.remove(id)?.cancel(); configs.remove(id); deadlines.remove(id) }
+                (configs.keys - ids).forEach { id -> running.remove(id)?.cancelAndJoin(); configs.remove(id); deadlines.remove(id) }
+                checksInProgress.value = checksInProgress.value.intersect(ids)
                 if (enabled.isEmpty()) {
                     CheckAlarm.schedule(this, null)
                     stopForeground(STOP_FOREGROUND_REMOVE)
@@ -103,11 +112,13 @@ class MonitorService : Service() {
                 enabled.forEach { service ->
                     if (running[service.id]?.isActive != true && (deadlines[service.id] ?: now) <= now) {
                         deadlines[service.id] = Long.MAX_VALUE
+                        checksInProgress.value += service.id
                         running[service.id] = scope.launch {
                             try { check(service) }
                             catch (e: CancellationException) { throw e }
                             catch (_: Exception) { publish(1, notification("Could not store a check · retrying next interval")) }
                             finally {
+                                checksInProgress.value -= service.id
                                 if (configs[service.id] == service) deadlines[service.id] = SystemClock.elapsedRealtime() + service.intervalSeconds * 1_000L
                                 wake.trySend(Unit)
                             }
@@ -151,7 +162,11 @@ class MonitorService : Service() {
         MonitoringWidget.updateAll(this)
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_RUN) forced += intent.getLongExtra("serviceId", 0)
+        if (intent?.action == ACTION_RUN) {
+            val id = intent.getLongExtra("serviceId", 0)
+            forced += id
+            checksInProgress.value += id
+        }
         wake.trySend(Unit)
         return START_STICKY
     }
@@ -160,6 +175,7 @@ class MonitorService : Service() {
         active.value = false
         runCatching { network.unregisterNetworkCallback(callback) }
         scope.cancel()
+        checksInProgress.value = emptySet()
         MonitoringWidget.updateAll(this)
         super.onDestroy()
     }

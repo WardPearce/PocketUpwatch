@@ -19,11 +19,13 @@ class ServiceLifecycleTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val dao = MonitorDb.get(context).dao()
         runBlocking { dao.allServices().forEach { dao.delete(it) }; dao.add(ServiceEntry(name = "Paused", url = "https://example.com", intervalSeconds = 300, enabled = false)) }
+        MonitorService.checksInProgress.value = setOf(123)
         val controller = Robolectric.buildService(MonitorService::class.java).create().startCommand(0, 1)
         try {
             val deadline = System.nanoTime() + 10_000_000_000L
             while (MonitorService.active.value && System.nanoTime() < deadline) { shadowOf(Looper.getMainLooper()).idle(); Thread.sleep(10) }
             assertFalse(MonitorService.active.value)
+            assertTrue(MonitorService.checksInProgress.value.isEmpty())
             assertTrue(shadowOf(controller.get()).isStoppedBySelf)
         } finally { controller.destroy() }
     }

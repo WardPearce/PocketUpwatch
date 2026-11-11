@@ -13,13 +13,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Credentials
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
-@Composable fun ServiceEditor(existing: ServiceEntry?, modifier: Modifier = Modifier, onCancel: () -> Unit, onSave: (ServiceEntry) -> Unit) {
+@Composable internal fun ServiceEditor(existing: ServiceEntry?, modifier: Modifier = Modifier, onCancel: () -> Unit, probe: Probe? = null, onSave: suspend (ServiceEntry) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val secrets = remember { SecretStore() }
@@ -47,7 +53,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
     var timeout by rememberSaveable(existing?.id) { mutableStateOf((existing?.timeoutSeconds ?: 20).toString()) }
     var redirects by rememberSaveable(existing?.id) { mutableStateOf(existing?.followRedirects ?: true) }
     var validated by rememberSaveable(existing?.id) { mutableStateOf(existing?.requireValidatedInternet ?: false) }
-    var failures by rememberSaveable(existing?.id) { mutableStateOf((existing?.failureThreshold ?: 2).toString()) }
+    var failures by rememberSaveable(existing?.id) { mutableStateOf((existing?.failureThreshold ?: 1).toString()) }
     var recoveries by rememberSaveable(existing?.id) { mutableStateOf((existing?.recoveryThreshold ?: 1).toString()) }
     var initialDown by rememberSaveable(existing?.id) { mutableStateOf(existing?.notifyInitialDown ?: true) }
     var repeat by rememberSaveable(existing?.id) { mutableStateOf((existing?.repeatMinutes ?: 0).toString()) }
@@ -55,7 +61,6 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
     var warningDays by rememberSaveable(existing?.id) { mutableStateOf((existing?.certificateWarnDays ?: 30).toString()) }
     var dnsExpected by rememberSaveable(existing?.id) { mutableStateOf(existing?.dnsExpected ?: "") }
     var busy by remember { mutableStateOf(false) }
-    var diagnostic by remember { mutableStateOf<ProbeResult?>(null) }
     var actionError by remember { mutableStateOf<String?>(null) }
     val url = "$protocol://${target.trim()}"
     val http = protocol in listOf("http", "https")
@@ -90,14 +95,22 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
     }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         TextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true)
-        ChoiceMenu("Protocol", protocol.uppercase(), listOf("HTTPS", "HTTP", "TCP", "PING", "DNS", "TLS")) { protocol = it.lowercase() }
-        TextField(target, { input ->
-            val pasted = input.substringBefore("://").lowercase()
-            if (input.contains("://") && pasted in listOf("http", "https", "tcp", "ping", "dns", "tls")) { protocol = pasted; target = input.substringAfter("://") } else target = input
-        }, Modifier.fillMaxWidth(), label = { Text(if (protocol == "tcp") "Host:port" else if (protocol == "tls") "Host or host:port" else if (http) "Host, path and query" else "Host") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            ProtocolPicker(protocol) { protocol = it }
+            TextField(target, { input ->
+                val pasted = input.substringBefore("://").lowercase()
+                if (input.contains("://") && pasted in listOf("http", "https", "tcp", "ping", "dns", "tls")) {
+                    protocol = pasted
+                    target = input.substringAfter("://")
+                } else target = input
+            }, Modifier.weight(1f), label = { Text(if (protocol == "tcp") "Host:port" else if (protocol == "tls") "Host or host:port" else if (http) "Host, path and query" else "Host") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+        }
         TextField(tags, { tags = it }, Modifier.fillMaxWidth(), label = { Text("Tags (comma separated)") })
-        val intervals = listOf(300, 600, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400).let { (it + interval).distinct().sorted() }
-        ChoiceMenu("Interval", "$interval seconds", intervals.map { "$it seconds" }) { interval = it.substringBefore(' ').toInt() }
+        IntervalSlider(interval, existing?.intervalSeconds) { interval = it }
         TextField(timeout, { timeout = it }, label = { Text("Timeout in seconds (1–60)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
         SwitchRow("Require validated internet", validated) { validated = it }
         Text("Leave off for private LAN targets. Without validated internet, public target failures can reflect your network.", style = MaterialTheme.typography.bodySmall)
@@ -131,23 +144,38 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
         ChoiceMenu("Maintenance", if (maintenance > System.currentTimeMillis()) "Until ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(maintenance))}" else "Off", listOf("Off", "1 hour", "4 hours", "24 hours")) { maintenance = when (it) { "1 hour" -> 1L; "4 hours" -> 4L; "24 hours" -> 24L; else -> 0L }.let { h -> if (h == 0L) 0 else System.currentTimeMillis() + h * 3_600_000 } }
         Text("Maintenance records unknown skips and suspends endpoint alerts.", style = MaterialTheme.typography.bodySmall)
         validation?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        diagnostic?.let { Text("${if (it.up == null) "UNKNOWN" else if (it.up) "UP" else "DOWN"} · ${it.responseMs} ms · ${it.detail}") }
-        OutlinedButton(enabled = validation == null && !busy, onClick = {
-            busy = true; actionError = null
-            scope.launch {
-                try { val service = prepared(); diagnostic = withContext(Dispatchers.IO) { ProbeEngine.runner(context).run(service) } }
-                catch (_: Exception) { actionError = "Could not run the test" }
-                finally { busy = false }
-            }
-        }) { Text(if (busy) "Working…" else "Test before saving") }
-        Text("Tests make a real request, bypass scheduling and maintenance, and do not record results or send alerts.", style = MaterialTheme.typography.bodySmall)
+        actionError?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+        }
+        Text("Save checks the target first. If the check fails, fix the error and try again.", style = MaterialTheme.typography.bodySmall)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             TextButton(onClick = onCancel) { Text("Cancel") }
             Button(enabled = validation == null && !busy, onClick = {
-                busy = true; actionError = null
-                scope.launch { try { onSave(prepared()) } catch (_: Exception) { actionError = "Could not encrypt credentials"; busy = false } }
-            }) { Text("Save") }
+                busy = true
+                actionError = null
+                scope.launch {
+                    var saving = false
+                    try {
+                        val service = prepared()
+                        val result = withContext(Dispatchers.IO) {
+                            probe?.execute(service) ?: ProbeEngine.runner(context).run(service)
+                        }
+                        if (result.up == true) {
+                            saving = true
+                            onSave(service)
+                        } else actionError = "Check failed: ${result.detail}"
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        actionError = if (saving) "Could not save the monitor. Please try again." else "Could not test the monitor. Please try again."
+                    } finally { busy = false }
+                }
+            }) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (busy) CircularProgressIndicator(Modifier.size(16.dp).testTag("save-progress"), color = LocalContentColor.current, strokeWidth = 2.dp)
+                    Text(if (busy) "Checking…" else "Save")
+                }
+            }
         }
     }
 }

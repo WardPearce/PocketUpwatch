@@ -19,7 +19,8 @@ data class ServiceEntry(
     @ColumnInfo(defaultValue = "20") val timeoutSeconds: Int = 20,
     @ColumnInfo(defaultValue = "1") val followRedirects: Boolean = true,
     @ColumnInfo(defaultValue = "0") val requireValidatedInternet: Boolean = false,
-    @ColumnInfo(defaultValue = "2") val failureThreshold: Int = 2,
+    // Preserve the v4 SQL schema; every new monitor explicitly inserts the application default of 1.
+    @ColumnInfo(defaultValue = "2") val failureThreshold: Int = 1,
     @ColumnInfo(defaultValue = "1") val recoveryThreshold: Int = 1,
     @ColumnInfo(defaultValue = "1") val notifyInitialDown: Boolean = true,
     @ColumnInfo(defaultValue = "0") val repeatMinutes: Int = 0,
