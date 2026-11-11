@@ -264,7 +264,7 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
     val status = MonitorStatus.label(service, latest, active, now)
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(Modifier.weight(1f)) {
                     Text(service.name, style = MaterialTheme.typography.titleMedium)
                     Text(displayTarget(service.url), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
@@ -295,7 +295,10 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
     val summaries by remember(service.id, now / 3_600_000) { vm.dao.rollups(service.id, now - 365 * 86_400_000L) }.collectAsStateWithLifecycle(initialValue = emptyList())
     var hours by rememberSaveable(service.id) { mutableIntStateOf(24) }
     var confirm by remember { mutableStateOf(false) }
-    var checking by remember { mutableStateOf(false) }
+    var checking by remember(service.id) { mutableStateOf(false) }
+    val runningChecks by MonitorService.checksInProgress.collectAsStateWithLifecycle()
+    val isChecking = checking || service.id in runningChecks
+    var checkError by remember(service.id) { mutableStateOf<String?>(null) }
     var diagnostic by remember { mutableStateOf<ProbeResult?>(null) }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -307,11 +310,21 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
         Text(if (!service.enabled) "Monitoring is paused" else "Next scheduled check: about ${formatTime((latest?.time ?: now) + service.intervalSeconds * 1_000L)}; Android may delay it", style = MaterialTheme.typography.bodySmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { onEdit(service) }) { Text("Edit") }
-            Button(enabled = !checking, onClick = {
-                if (service.enabled) MonitorService.start(context, service.id)
-                else { checking = true; scope.launch { try { diagnostic = withContext(Dispatchers.IO) { ProbeEngine.runner(context).run(service) } } finally { checking = false } } }
-            }) { Text(if (checking) "Checking…" else "Check now") }
+            CheckNowButton(checking = isChecking, onClick = {
+                checkError = null
+                if (service.enabled) {
+                    try { MonitorService.start(context, service.id) }
+                    catch (_: Exception) { checkError = "Could not start the check. Try again." }
+                } else {
+                    checking = true
+                    scope.launch {
+                        try { diagnostic = withContext(Dispatchers.IO) { ProbeEngine.runner(context).run(service) } }
+                        finally { checking = false }
+                    }
+                }
+            })
         }
+        checkError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (!service.enabled) Text("A manual test on a paused monitor does not record history or send alerts.", style = MaterialTheme.typography.bodySmall)
         diagnostic?.let { Text("${if (it.up == null) "UNKNOWN" else if (it.up) "UP" else "DOWN"} · ${it.responseMs} ms · ${it.detail}") }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf(1 to "1h", 24 to "24h", 168 to "7d", 720 to "30d").forEach { (value, label) -> FilterChip(hours == value, { hours = value }, label = { Text(label) }) } }
@@ -418,7 +431,6 @@ class GraphActivity : ComponentActivity() {
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content) }
 }
 private fun formatTime(time: Long) = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(time))
-private fun formatInterval(seconds: Int): String = if (seconds % 3600 == 0) "${seconds / 3600} hours" else "${seconds / 60} minutes"
 
 @Composable fun ResponseChart(history: List<CheckEntry>, modifier: Modifier = Modifier) {
     val points = remember(history) { history.sortedBy { it.time } }

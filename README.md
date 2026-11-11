@@ -4,7 +4,7 @@ An Android uptime monitor built with Kotlin, Compose, and Room. Monitor HTTP(S),
 
 ## Monitoring
 
-Add a target, choose a check interval from 5 minutes to 24 hours, and optionally test it before saving. Monitors begin checking when saved; each can be paused independently. Search names, targets, or tags, sort by status/name/tag, or pause/resume the whole collection.
+Add a target, choose a check interval from 5 minutes to 24 hours with the interval slider, and optionally test it before saving. Monitors begin checking when saved; each can be paused independently. Search names, targets, or tags, sort by status/name/tag, or pause/resume the whole collection.
 
 | Protocol | Example | What it checks |
 | --- | --- | --- |
@@ -56,7 +56,7 @@ Pull requests run tests, Android lint, and the debug build without signing secre
 
 ## Android releases
 
-Version 0.1.0 uses version code 6. Before the next release, update `versionName` and increase `versionCode` in `app/build.gradle.kts`. Every push to `main` validates the project, then builds a signed APK. If `v<versionName>` does not exist, the workflow creates a tag and GitHub release. Existing version tags skip publication.
+Version 0.1.1 uses version code 7. Before the next release, update `versionName` and increase `versionCode` in `app/build.gradle.kts`. Every push to `main` validates the project, then builds a signed APK. If `v<versionName>` does not exist, the workflow creates a tag and GitHub release. Existing version tags skip publication.
 
 Configure repository Actions secrets:
 

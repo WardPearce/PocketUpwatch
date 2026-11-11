@@ -90,14 +90,22 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
     }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         TextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true)
-        ChoiceMenu("Protocol", protocol.uppercase(), listOf("HTTPS", "HTTP", "TCP", "PING", "DNS", "TLS")) { protocol = it.lowercase() }
-        TextField(target, { input ->
-            val pasted = input.substringBefore("://").lowercase()
-            if (input.contains("://") && pasted in listOf("http", "https", "tcp", "ping", "dns", "tls")) { protocol = pasted; target = input.substringAfter("://") } else target = input
-        }, Modifier.fillMaxWidth(), label = { Text(if (protocol == "tcp") "Host:port" else if (protocol == "tls") "Host or host:port" else if (http) "Host, path and query" else "Host") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            ProtocolPicker(protocol) { protocol = it }
+            TextField(target, { input ->
+                val pasted = input.substringBefore("://").lowercase()
+                if (input.contains("://") && pasted in listOf("http", "https", "tcp", "ping", "dns", "tls")) {
+                    protocol = pasted
+                    target = input.substringAfter("://")
+                } else target = input
+            }, Modifier.weight(1f), label = { Text(if (protocol == "tcp") "Host:port" else if (protocol == "tls") "Host or host:port" else if (http) "Host, path and query" else "Host") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+        }
         TextField(tags, { tags = it }, Modifier.fillMaxWidth(), label = { Text("Tags (comma separated)") })
-        val intervals = listOf(300, 600, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400).let { (it + interval).distinct().sorted() }
-        ChoiceMenu("Interval", "$interval seconds", intervals.map { "$it seconds" }) { interval = it.substringBefore(' ').toInt() }
+        IntervalSlider(interval, existing?.intervalSeconds) { interval = it }
         TextField(timeout, { timeout = it }, label = { Text("Timeout in seconds (1–60)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
         SwitchRow("Require validated internet", validated) { validated = it }
         Text("Leave off for private LAN targets. Without validated internet, public target failures can reflect your network.", style = MaterialTheme.typography.bodySmall)

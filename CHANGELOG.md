@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1
+
+- Separate monitor status labels from the pause/resume switch.
+- Show a loading spinner and disable Check now while a check is queued or running, including checks performed by the foreground service.
+- Restore the interval slider with readable labels such as 5min and 2hours; preserve custom intervals when editing.
+- Place the protocol selector alongside the host input.
+
 ## 0.1.0
 
 - Add incident history, consecutive failure/recovery thresholds, optional initial-down alerts, repeat reminders, and maintenance windows.
