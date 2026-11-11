@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2
+
+- Redesign the add/edit form with section cards, icons, setting summaries, collapsible advanced options, and a persistent Save/Cancel bar.
+- Rename Require validated internet to Require Internet and enable it by default for new monitors; preserve existing settings.
+- Disable form controls during save-time checks and keep validation errors next to the Save action.
+
 ## 0.1.1
 
 - Default new monitors to DOWN after one failed check; preserve existing configured thresholds.

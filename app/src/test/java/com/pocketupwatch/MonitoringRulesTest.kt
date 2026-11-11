@@ -4,7 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MonitoringRulesTest {
-    private val service = ServiceEntry(id = 1, name = "API", url = "https://example.com", intervalSeconds = 300, failureThreshold = 2)
+    private val service = ServiceEntry(id = 1, name = "API", url = "https://example.com", intervalSeconds = 300, failureThreshold = 2, requireValidatedInternet = false)
     private fun check(up: Boolean, time: Long = 1_000, skipped: Boolean = false) = CheckEntry(serviceId = 1, time = time, up = up, responseMs = 10, detail = "test", skipped = skipped)
     @Test fun newMonitorsAreDownAfterOneFailedCheckByDefault() {
         val monitor = ServiceEntry(id = 1, name = "API", url = "https://example.com", intervalSeconds = 300)
@@ -64,6 +64,11 @@ class MonitoringRulesTest {
         assertEquals("STALE", MonitorStatus.label(service, check(true), true, 602_000))
         assertEquals("UNKNOWN", MonitorStatus.label(service, check(false, skipped = true), true, 2_000))
         assertEquals("MAINTENANCE", MonitorStatus.label(service.copy(maintenanceUntil = 5_000), check(true), true, 2_000))
+    }
+    @Test fun newMonitorsRequireInternetByDefault() {
+        val monitor = ServiceEntry(name = "API", url = "https://example.com", intervalSeconds = 300)
+        assertTrue(monitor.requireValidatedInternet)
+        assertNotNull(ConnectivityPolicy.skipReason(monitor, true, false, 0))
     }
     @Test fun connectivityAllowsLocalNetworksButCanRequireInternet() {
         assertNull(ConnectivityPolicy.skipReason(service, true, false, 0))
