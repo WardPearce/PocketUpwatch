@@ -18,7 +18,7 @@ object CheckAlarm {
         val alarms = context.getSystemService(AlarmManager::class.java)
         val operation = pending(context)
         if (seconds == null) { alarms.cancel(operation); return }
-        val trigger = SystemClock.elapsedRealtime() + seconds * 1000L
+        val trigger = SystemClock.elapsedRealtime() + seconds.coerceAtLeast(1) * 1000L
         try {
             if (canScheduleExact(context)) alarms.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, trigger, operation)
             else alarms.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, trigger, operation)
@@ -37,7 +37,7 @@ class AlarmReceiver : BroadcastReceiver() {
             ContextCompat.startForegroundService(context, Intent(context, MonitorService::class.java).setAction(CheckAlarm.ACTION_CHECK))
         } catch (e: Exception) {
             lock.release()
-            throw e
+            // Background-start restrictions can reject delivery; opening the app restores monitoring.
         }
         // The bounded delivery lock bridges the asynchronous service startup.
 

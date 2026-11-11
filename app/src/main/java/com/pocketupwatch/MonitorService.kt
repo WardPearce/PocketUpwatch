@@ -1,159 +1,166 @@
 package com.pocketupwatch
 
 import android.app.*
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.os.Build
-import android.os.IBinder
-import android.os.PowerManager
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import java.util.concurrent.ConcurrentHashMap
-import android.net.ConnectivityManager
-import org.json.JSONTokener
-import javax.xml.parsers.DocumentBuilderFactory
-import org.xml.sax.InputSource
-import java.io.StringReader
+import android.net.*
+import android.os.*
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import okhttp3.Call
-import okhttp3.Callback
-import okhttp3.Response
-import java.io.IOException
-import java.net.InetSocketAddress
-import java.net.Socket
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.util.concurrent.TimeUnit
+
+internal object ConnectivityPolicy {
+    fun skipReason(service: ServiceEntry, connected: Boolean, validated: Boolean, now: Long): String? = when {
+        service.maintenanceUntil > now -> "Maintenance window"
+        !connected -> "No network connection"
+        service.requireValidatedInternet && !validated -> "Internet connection is not validated"
+        else -> null
+    }
+}
 
 class MonitorService : Service() {
-    companion object { val active = MutableStateFlow(false) }
-    private val permits = Semaphore(4)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val client = OkHttpClient.Builder().callTimeout(20, TimeUnit.SECONDS).build()
-    private val checkLocks = ConcurrentHashMap<Long, Mutex>()
+    companion object {
+        val active = MutableStateFlow(false)
+        const val ACTION_RUN = "com.pocketupwatch.RUN_NOW"
+        fun start(context: Context, id: Long? = null) {
+            val intent = Intent(context, MonitorService::class.java)
+            if (id != null) intent.setAction(ACTION_RUN).putExtra("serviceId", id)
+            ContextCompat.startForegroundService(context, intent)
+        }
+    }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val wake = Channel<Unit>(Channel.CONFLATED)
     private val running = mutableMapOf<Long, Job>()
     private val configs = mutableMapOf<Long, ServiceEntry>()
+    private val deadlines = mutableMapOf<Long, Long>()
+    private val forced = mutableSetOf<Long>()
+    private var networkSignature: Pair<Boolean, Boolean>? = null
+    private var lastPruned = 0L
+    private val network by lazy { getSystemService(ConnectivityManager::class.java) }
+    private val callback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) { wake.trySend(Unit) }
+        override fun onLost(network: Network) { wake.trySend(Unit) }
+        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) { wake.trySend(Unit) }
+    }
     override fun onCreate() {
         super.onCreate()
-        active.value = true
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel("monitor", "Monitoring", NotificationManager.IMPORTANCE_LOW))
         manager.createNotificationChannel(NotificationChannel("alerts", "Service alerts", NotificationManager.IMPORTANCE_HIGH))
-        val notification = NotificationCompat.Builder(this, "monitor").setSmallIcon(android.R.drawable.ic_popup_sync).setContentTitle("Pocket Upwatch is monitoring").setContentText("Service checks are running").setOngoing(true).setContentIntent(openIntent()).build()
+        val notification = notification("Starting monitoring")
         if (Build.VERSION.SDK_INT >= 34) startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE) else startForeground(1, notification)
-        scope.launch {
-            MonitorDb.get(this@MonitorService).dao().services().collect { services ->
-                val enabled = services.filter { it.enabled }
-                val ids = enabled.map { it.id }.toSet()
-                CheckAlarm.schedule(this@MonitorService, enabled.minOfOrNull { it.intervalSeconds })
-                running.keys.filter { it !in ids }.toList().forEach { running.remove(it)?.cancel(); configs.remove(it) }
-                enabled.forEach { service ->
-                    if (configs[service.id] != service || running[service.id]?.isActive != true) {
-                        running.remove(service.id)?.cancel()
-                        configs[service.id] = service
-                        running[service.id] = launch { monitor(service) }
-                    }
-                }
-            }
+        active.value = true
+        network.registerDefaultNetworkCallback(callback)
+        scope.launch { MonitorDb.get(this@MonitorService).dao().services().collect { wake.trySend(Unit) } }
+        scope.launch { scheduler() }
+    }
+    private fun publish(id: Int, notification: Notification) {
+        if (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            getSystemService(NotificationManager::class.java).notify(id, notification)
         }
     }
-    private fun openIntent(): PendingIntent = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-    private fun online(): Boolean {
-        val cm = getSystemService(ConnectivityManager::class.java)
-        return cm.activeNetwork != null
+    private fun notification(text: String) = NotificationCompat.Builder(this, "monitor").setSmallIcon(android.R.drawable.ic_popup_sync).setContentTitle("Pocket Upwatch").setContentText(text).setOngoing(true).setContentIntent(openIntent()).build()
+    private fun openIntent(id: Long = 0): PendingIntent = PendingIntent.getActivity(this, (id % Int.MAX_VALUE).toInt(), Intent(this, MainActivity::class.java).putExtra("serviceId", id).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    private fun connectivity(): Pair<Boolean, Boolean> {
+        val current = network.activeNetwork
+        return (current != null) to (current?.let { network.getNetworkCapabilities(it)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) } == true)
     }
-    private fun matchesBody(type: String, expected: String, actual: String): Boolean = try {
-        when (type) {
-            "Text" -> actual == expected
-            "JSON" -> org.json.JSONObject.wrap(JSONTokener(actual).nextValue()).toString() == org.json.JSONObject.wrap(JSONTokener(expected).nextValue()).toString()
-            "XML" -> {
-                val factory = DocumentBuilderFactory.newInstance().apply { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true); isNamespaceAware = true }
-                fun parse(value: String) = factory.newDocumentBuilder().parse(InputSource(StringReader(value))).apply { normalizeDocument() }
-                parse(actual).isEqualNode(parse(expected))
-            }
-            else -> true
-        }
-    } catch (_: Exception) { false }
-    private suspend fun execute(call: Call): Response = suspendCancellableCoroutine { continuation ->
-        continuation.invokeOnCancellation { call.cancel() }
-        call.enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) { if (continuation.isActive) continuation.resumeWithException(e) }
-            override fun onResponse(call: Call, response: Response) { continuation.resume(response) { response.close() } }
-        })
-    }
-    private suspend fun monitor(service: ServiceEntry) {
+    private suspend fun scheduler() {
+        wake.trySend(Unit)
         while (currentCoroutineContext().isActive) {
-            check(service, false)
-            delay(if (online()) service.intervalSeconds * 1000L else 10_000L)
-        }
-    }
-    private suspend fun check(service: ServiceEntry, onlyIfDue: Boolean) {
-        checkLocks.getOrPut(service.id) { Mutex() }.withLock {
-            val dao = MonitorDb.get(this).dao()
-            if (onlyIfDue && dao.latest(service.id)?.let { System.currentTimeMillis() - it.time < service.intervalSeconds * 1000L } == true) return@withLock
-            if (!online()) return@withLock
-            val start = System.nanoTime()
-            var up = false
-            val detail = try {
-                permits.withPermit {
-                    val target = MonitorTarget.parse(service.url) ?: throw IOException("Invalid target")
-                    when (target.protocol) {
-                        "tcp" -> {
-                            Socket().use { it.connect(InetSocketAddress(target.host, target.port), 5_000) }
-                            up = true
-                            "TCP connection successful"
-                        }
-                        "ping" -> {
-                            val process = ProcessBuilder("/system/bin/ping", "-c", "1", "-W", "5", target.host).redirectErrorStream(true).start()
-                            try {
-                                val finished = process.waitFor(7, TimeUnit.SECONDS)
-                                up = finished && process.exitValue() == 0
-                                if (up) "Ping reply received" else if (!finished) "Ping timed out" else "No ping reply"
-                            } finally { process.destroy() }
-                        }
-                        else -> execute(client.newCall(Request.Builder().url(service.url).get().build())).use { response ->
-                    val statusOk = if (service.expectedCode == 0) response.isSuccessful else response.code == service.expectedCode
-                    val body = if (service.bodyType == "None") "" else response.peekBody(1_048_577).bytes().let { if (it.size > 1_048_576) null else it.toString(Charsets.UTF_8) }
-                    val bodyOk = service.bodyType == "None" || (body != null && matchesBody(service.bodyType, service.expectedBody, body))
-                    up = statusOk && bodyOk
-                    "HTTP ${response.code}" + if (body == null) " · body exceeds 1 MiB" else if (!bodyOk) " · body mismatch" else ""
+            wake.receive()
+            try {
+                val dao = MonitorDb.get(this).dao()
+                val enabled = dao.allServices().filter { it.enabled }
+                val ids = enabled.map { it.id }.toSet()
+                (configs.keys - ids).forEach { id -> running.remove(id)?.cancel(); configs.remove(id); deadlines.remove(id) }
+                if (enabled.isEmpty()) {
+                    CheckAlarm.schedule(this, null)
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                    active.value = false
+                    MonitoringWidget.updateAll(this)
+                    return
+                }
+                val now = SystemClock.elapsedRealtime()
+                val wall = System.currentTimeMillis()
+                val connection = connectivity()
+                val networkChanged = networkSignature != null && connection != networkSignature && connection.first
+                networkSignature = connection
+                enabled.forEach { service ->
+                    val prior = configs[service.id]
+                    if (prior != service) {
+                        running.remove(service.id)?.cancelAndJoin()
+                        configs[service.id] = service
+                        deadlines[service.id] = if (prior == null) CheckSchedule.restoredDeadline(service, dao.latest(service.id), wall, now) else now
+                    }
+                    if (service.id in forced || networkChanged && running[service.id]?.isActive != true) deadlines[service.id] = now
+                }
+                forced.clear()
+                enabled.forEach { service ->
+                    if (running[service.id]?.isActive != true && (deadlines[service.id] ?: now) <= now) {
+                        deadlines[service.id] = Long.MAX_VALUE
+                        running[service.id] = scope.launch {
+                            try { check(service) }
+                            catch (e: CancellationException) { throw e }
+                            catch (_: Exception) { publish(1, notification("Could not store a check · retrying next interval")) }
+                            finally {
+                                if (configs[service.id] == service) deadlines[service.id] = SystemClock.elapsedRealtime() + service.intervalSeconds * 1_000L
+                                wake.trySend(Unit)
+                            }
                         }
                     }
                 }
-            } catch (e: CancellationException) { throw e } catch (e: java.net.SocketTimeoutException) { "Timeout" } catch (e: javax.net.ssl.SSLException) { "TLS failure" } catch (e: IOException) { "DNS or connection failure" } catch (e: Exception) { "Check failed" }
-            if (!online()) return@withLock
-            val elapsed = (System.nanoTime() - start) / 1_000_000
-            val previous = dao.latest(service.id)
-            currentCoroutineContext().ensureActive()
-            if (!dao.recordIfUnchanged(service, CheckEntry(serviceId = service.id, time = System.currentTimeMillis(), up = up, responseMs = elapsed, detail = detail))) return@withLock
-            currentCoroutineContext().ensureActive()
-            if (previous != null && previous.up != up) {
-                val message = if (up) "${service.name} recovered" else "${service.name} is down"
-                val alert = NotificationCompat.Builder(this, "alerts").setSmallIcon(android.R.drawable.stat_notify_error).setContentTitle(message).setContentText(detail).setContentIntent(openIntent()).setAutoCancel(true).build()
-                getSystemService(NotificationManager::class.java).notify((service.id % Int.MAX_VALUE).toInt() + 2, alert)
+                val pending = deadlines.values.filter { it != Long.MAX_VALUE }
+                val seconds = CheckSchedule.alarmSeconds(pending, SystemClock.elapsedRealtime()) ?: enabled.minOf { it.intervalSeconds }
+                CheckAlarm.schedule(this, seconds)
+                publish(1, notification("${enabled.size} enabled · next check in about ${seconds.coerceAtLeast(1)} seconds"))
+                if (wall - lastPruned > 3_600_000) {
+                    lastPruned = wall
+                    val retention = getSharedPreferences("settings", MODE_PRIVATE).getInt("retention_days", 90).coerceIn(7, 365)
+                    dao.pruneChecks(wall - retention * 86_400_000L)
+                    dao.pruneHours(wall - 365 * 86_400_000L)
+                }
+                withTimeoutOrNull(seconds * 1_000L) { wake.receive() }
+                wake.trySend(Unit)
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) {
+                publish(1, notification("Monitoring interrupted · retrying in one minute"))
+                CheckAlarm.schedule(this, 60)
+                delay(60_000)
+                wake.trySend(Unit)
             }
         }
+    }
+    private suspend fun check(service: ServiceEntry) {
+        val dao = MonitorDb.get(this).dao()
+        val before = connectivity()
+        val skip = ConnectivityPolicy.skipReason(service, before.first, before.second, System.currentTimeMillis())
+        var result = if (skip != null) ProbeResult(null, skip) else withContext(Dispatchers.IO) { ProbeEngine.runner(this@MonitorService).run(service) }
+        val after = connectivity()
+        if (skip == null && (!after.first || before != after && result.up == false)) result = ProbeResult(null, "Network changed during check")
+        currentCoroutineContext().ensureActive()
+        val event = dao.recordIfUnchanged(service, CheckEntry(serviceId = service.id, time = System.currentTimeMillis(), up = result.up == true, responseMs = result.responseMs, detail = result.detail, skipped = result.up == null))
+        if (event != null && androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled()) {
+            val alert = NotificationCompat.Builder(this, "alerts").setSmallIcon(android.R.drawable.stat_notify_error).setContentTitle("${service.name} $event").setContentText(result.detail).setContentIntent(openIntent(service.id)).setAutoCancel(true).build()
+            publish((service.id % (Int.MAX_VALUE - 2)).toInt() + 2, alert)
+        }
+        MonitoringWidget.updateAll(this)
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == CheckAlarm.ACTION_CHECK) {
-            val lock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PocketUpwatch:checks")
-            lock.acquire(120_000L)
-            scope.launch {
-                try {
-                    val enabled = MonitorDb.get(this@MonitorService).dao().allServices().filter { it.enabled }
-                    CheckAlarm.schedule(this@MonitorService, enabled.minOfOrNull { it.intervalSeconds })
-                    enabled.map { async { check(it, true) } }.awaitAll()
-                } finally { if (lock.isHeld) lock.release() }
-            }
-        }
+        if (intent?.action == ACTION_RUN) forced += intent.getLongExtra("serviceId", 0)
+        wake.trySend(Unit)
         return START_STICKY
     }
     override fun onBind(intent: Intent?): IBinder? = null
-    override fun onDestroy() { active.value = false; scope.cancel(); super.onDestroy() }
+    override fun onDestroy() {
+        active.value = false
+        runCatching { network.unregisterNetworkCallback(callback) }
+        scope.cancel()
+        MonitoringWidget.updateAll(this)
+        super.onDestroy()
+    }
 }
