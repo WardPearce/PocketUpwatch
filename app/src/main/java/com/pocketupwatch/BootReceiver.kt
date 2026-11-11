@@ -16,7 +16,7 @@ class BootReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 if (MonitorDb.get(context).dao().services().first().any { it.enabled }) {
-                    ContextCompat.startForegroundService(context, Intent(context, MonitorService::class.java))
+                    runCatching { MonitorService.start(context) }
                 }
             } finally {
                 pending.finish()

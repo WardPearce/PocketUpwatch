@@ -1,0 +1,480 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 4,
+    "identityHash": "19453f8eb3993431cfe237b1ce9d9022",
+    "entities": [
+      {
+        "tableName": "services",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `url` TEXT NOT NULL, `intervalSeconds` INTEGER NOT NULL, `enabled` INTEGER NOT NULL, `expectedCode` INTEGER NOT NULL, `bodyType` TEXT NOT NULL, `expectedBody` TEXT NOT NULL, `method` TEXT NOT NULL DEFAULT 'GET', `requestBody` TEXT NOT NULL DEFAULT '', `headersCiphertext` TEXT NOT NULL DEFAULT '', `jsonPath` TEXT NOT NULL DEFAULT '', `timeoutSeconds` INTEGER NOT NULL DEFAULT 20, `followRedirects` INTEGER NOT NULL DEFAULT 1, `requireValidatedInternet` INTEGER NOT NULL DEFAULT 0, `failureThreshold` INTEGER NOT NULL DEFAULT 2, `recoveryThreshold` INTEGER NOT NULL DEFAULT 1, `notifyInitialDown` INTEGER NOT NULL DEFAULT 1, `repeatMinutes` INTEGER NOT NULL DEFAULT 0, `maintenanceUntil` INTEGER NOT NULL DEFAULT 0, `certificateWarnDays` INTEGER NOT NULL DEFAULT 30, `dnsExpected` TEXT NOT NULL DEFAULT '', `tags` TEXT NOT NULL DEFAULT '')",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "url",
+            "columnName": "url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "intervalSeconds",
+            "columnName": "intervalSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expectedCode",
+            "columnName": "expectedCode",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bodyType",
+            "columnName": "bodyType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expectedBody",
+            "columnName": "expectedBody",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "method",
+            "columnName": "method",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'GET'"
+          },
+          {
+            "fieldPath": "requestBody",
+            "columnName": "requestBody",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "headersCiphertext",
+            "columnName": "headersCiphertext",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "jsonPath",
+            "columnName": "jsonPath",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "timeoutSeconds",
+            "columnName": "timeoutSeconds",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "20"
+          },
+          {
+            "fieldPath": "followRedirects",
+            "columnName": "followRedirects",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          },
+          {
+            "fieldPath": "requireValidatedInternet",
+            "columnName": "requireValidatedInternet",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "failureThreshold",
+            "columnName": "failureThreshold",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "2"
+          },
+          {
+            "fieldPath": "recoveryThreshold",
+            "columnName": "recoveryThreshold",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          },
+          {
+            "fieldPath": "notifyInitialDown",
+            "columnName": "notifyInitialDown",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          },
+          {
+            "fieldPath": "repeatMinutes",
+            "columnName": "repeatMinutes",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "maintenanceUntil",
+            "columnName": "maintenanceUntil",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "certificateWarnDays",
+            "columnName": "certificateWarnDays",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "30"
+          },
+          {
+            "fieldPath": "dnsExpected",
+            "columnName": "dnsExpected",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "tags",
+            "columnName": "tags",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "checks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `serviceId` INTEGER NOT NULL, `time` INTEGER NOT NULL, `up` INTEGER NOT NULL, `responseMs` INTEGER NOT NULL, `detail` TEXT NOT NULL, `skipped` INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(`serviceId`) REFERENCES `services`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serviceId",
+            "columnName": "serviceId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "time",
+            "columnName": "time",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "up",
+            "columnName": "up",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "responseMs",
+            "columnName": "responseMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "detail",
+            "columnName": "detail",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "skipped",
+            "columnName": "skipped",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_checks_serviceId",
+            "unique": false,
+            "columnNames": [
+              "serviceId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_checks_serviceId` ON `${TABLE_NAME}` (`serviceId`)"
+          },
+          {
+            "name": "index_checks_serviceId_time_id",
+            "unique": false,
+            "columnNames": [
+              "serviceId",
+              "time",
+              "id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_checks_serviceId_time_id` ON `${TABLE_NAME}` (`serviceId`, `time`, `id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "services",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "serviceId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "alert_states",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`serviceId` INTEGER NOT NULL, `confirmed` TEXT NOT NULL, `downStreak` INTEGER NOT NULL, `upStreak` INTEGER NOT NULL, `candidateSince` INTEGER NOT NULL, `lastAlertAt` INTEGER NOT NULL, PRIMARY KEY(`serviceId`), FOREIGN KEY(`serviceId`) REFERENCES `services`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "serviceId",
+            "columnName": "serviceId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "confirmed",
+            "columnName": "confirmed",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "downStreak",
+            "columnName": "downStreak",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "upStreak",
+            "columnName": "upStreak",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "candidateSince",
+            "columnName": "candidateSince",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastAlertAt",
+            "columnName": "lastAlertAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "serviceId"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": [
+          {
+            "table": "services",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "serviceId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "incidents",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `serviceId` INTEGER NOT NULL, `startedAt` INTEGER NOT NULL, `endedAt` INTEGER, `reason` TEXT NOT NULL, `downChecks` INTEGER NOT NULL, `unknownChecks` INTEGER NOT NULL, FOREIGN KEY(`serviceId`) REFERENCES `services`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serviceId",
+            "columnName": "serviceId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "startedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endedAt",
+            "columnName": "endedAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "reason",
+            "columnName": "reason",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "downChecks",
+            "columnName": "downChecks",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unknownChecks",
+            "columnName": "unknownChecks",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_incidents_serviceId",
+            "unique": false,
+            "columnNames": [
+              "serviceId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_incidents_serviceId` ON `${TABLE_NAME}` (`serviceId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "services",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "serviceId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "hourly_stats",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`serviceId` INTEGER NOT NULL, `hour` INTEGER NOT NULL, `upCount` INTEGER NOT NULL, `downCount` INTEGER NOT NULL, `skippedCount` INTEGER NOT NULL, `responseTotal` INTEGER NOT NULL, `responseMax` INTEGER NOT NULL, PRIMARY KEY(`serviceId`, `hour`), FOREIGN KEY(`serviceId`) REFERENCES `services`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "serviceId",
+            "columnName": "serviceId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour",
+            "columnName": "hour",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "upCount",
+            "columnName": "upCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "downCount",
+            "columnName": "downCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "skippedCount",
+            "columnName": "skippedCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "responseTotal",
+            "columnName": "responseTotal",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "responseMax",
+            "columnName": "responseMax",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "serviceId",
+            "hour"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": [
+          {
+            "table": "services",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "serviceId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '19453f8eb3993431cfe237b1ce9d9022')"
+    ]
+  }
+}
