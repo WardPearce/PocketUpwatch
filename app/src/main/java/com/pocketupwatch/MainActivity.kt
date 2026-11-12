@@ -39,7 +39,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -81,7 +80,7 @@ import java.text.DateFormat
 import java.util.Date
 import kotlin.math.roundToInt
 
-@Composable private fun appColorScheme(mode: String): ColorScheme {
+@Composable internal fun appColorScheme(mode: String): ColorScheme {
     val context = androidx.compose.ui.platform.LocalContext.current
     val dark = when (mode) { "Dark" -> true; "Light" -> false; else -> isSystemInDarkTheme() }
     return if (Build.VERSION.SDK_INT >= 31) {
@@ -89,7 +88,7 @@ import kotlin.math.roundToInt
     } else if (dark) darkColorScheme() else lightColorScheme()
 }
 
-@Composable private fun ThemedSystemBars(activity: ComponentActivity) {
+@Composable internal fun ThemedSystemBars(activity: ComponentActivity) {
     val surface = MaterialTheme.colorScheme.surface
     SideEffect {
         @Suppress("DEPRECATION")
@@ -164,16 +163,18 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
         try {
             val id = if (service.id == 0L) dao.add(service) else { dao.update(service); service.id }
             if (service.enabled) MonitorService.start(getApplication())
+            MonitoringWidget.updateAll(getApplication(), id)
             onSaved(id)
         } catch (_: Exception) { error.value = "Could not save the monitor" }
     }
     fun delete(service: ServiceEntry, done: () -> Unit) = viewModelScope.launch {
-        try { dao.delete(service); done() } catch (_: Exception) { error.value = "Could not delete the monitor" }
+        try { dao.delete(service); MonitoringWidget.updateAll(getApplication(), service.id); done() } catch (_: Exception) { error.value = "Could not delete the monitor" }
     }
     fun setAll(enabled: Boolean) = viewModelScope.launch {
         try {
             dao.setAllEnabled(enabled)
             if (enabled) MonitorService.start(getApplication())
+            MonitoringWidget.updateAll(getApplication())
         } catch (_: Exception) { error.value = "Could not change monitoring state" }
     }
 }
@@ -220,15 +221,16 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
     val selected = services.firstOrNull { it.id == selectedId }
     val editing = services.firstOrNull { it.id == editingId }
     val editor = adding || editing != null
-    BackHandler(editor || selected != null || tools) {
+    val canNavigateBack = editor || selected != null || tools
+    BackHandler(canNavigateBack) {
         when { editor -> { adding = false; editingId = 0 }; tools -> tools = false; else -> selectedId = 0 }
     }
     Scaffold(topBar = {
-        TopAppBar(title = { Text(when { editor -> if (adding) "Add monitor" else "Edit monitor"; tools -> "Backup and settings"; selected != null -> selected.name; else -> "Pocket Upwatch" }) }, navigationIcon = {
-            if (editor || selected != null || tools) AppIconButton(modifier = Modifier.padding(start = 8.dp), onClick = { when { editor -> { adding = false; editingId = 0 }; tools -> tools = false; else -> selectedId = 0 } }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-        }, actions = { if (!editor && selected == null && !tools) AppIconButton(onClick = { tools = true }, modifier = Modifier.padding(end = 8.dp)) { Icon(Icons.Default.Settings, "Backup and settings") } })
+        AppTopBar(title = when { editor -> if (adding) "Add monitor" else "Edit monitor"; tools -> "Backup and settings"; selected != null -> selected.name; else -> "Pocket Upwatch" },
+            onBack = if (canNavigateBack) ({ when { editor -> { adding = false; editingId = 0 }; tools -> tools = false; else -> selectedId = 0 } }) else null,
+            actions = { if (!canNavigateBack) AppIconButton(onClick = { tools = true }, modifier = Modifier.padding(end = 8.dp)) { Icon(Icons.Default.Settings, "Backup and settings") } })
     }, floatingActionButton = {
-        if (!editor && selected == null && !tools) ExtendedFloatingActionButton(onClick = { adding = true }, shape = RoundedCornerShape(8.dp), icon = { Icon(Icons.Default.Add, null) }, text = { Text("Add monitor") })
+        if (!canNavigateBack) ExtendedFloatingActionButton(onClick = { adding = true }, shape = RoundedCornerShape(8.dp), icon = { Icon(Icons.Default.Add, null) }, text = { Text("Add monitor") })
     }) { padding ->
         when {
             editor -> ServiceEditor(editing, Modifier.padding(padding), onCancel = { adding = false; editingId = 0 }) { service -> vm.save(service) { id -> adding = false; editingId = 0; selectedId = id }.join() }

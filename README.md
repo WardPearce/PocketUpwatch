@@ -28,6 +28,8 @@ The detail screen shows availability and mean response times for 1 hour, 24 hour
 
 Raw-history retention is configurable in settings (30/90/180/365 days; default 90). Cleanup runs during monitoring and retains each monitor's latest result. Hourly summaries are retained for one year; incidents remain until their monitor is deleted. Deleting a monitor deletes its history, summaries, and incidents. Export checks or incidents as CSV from its detail screen.
 
+Add **Service uptime** from your launcher's widget picker and choose a service. Each widget shows that service's current status, successful-check percentage over the last 24 hours, and an availability graph with 15-minute buckets. Green marks successful checks, red marks failures, and gray marks missing or skipped samples. Skipped checks are excluded from the percentage; no valid checks displays no percentage. Tap the widget to open its service. You can add multiple widgets for different services and reconfigure them through supported launchers. If a service is deleted, tap its widget to choose another. Widgets refresh after monitoring results and configuration changes, plus Android's periodic widget updates; they do not run extra probes. The original overview widget remains available.
+
 ## Background behavior
 
 Monitoring uses a foreground service and ongoing notification. A single due-time scheduler coordinates active checks and wake-up alarms, using monotonic deadlines within a process. Enabled monitors resume when the app opens or after reboot; Android may restart the service after process reclamation. Pausing/deleting the last enabled monitor stops the service and alarms. A force-stop prevents automatic restart until the app is opened again.
@@ -58,7 +60,7 @@ Pull requests run tests, Android lint, and the debug build without signing secre
 
 ## Android releases
 
-Version 0.1.5 uses version code 11. Before the next release, update `versionName` and increase `versionCode` in `app/build.gradle.kts`. Every push to `main` validates the project, then builds a signed APK. If `v<versionName>` does not exist, the workflow creates a tag and GitHub release. Existing version tags skip publication.
+Version 0.1.6 uses version code 12. Before the next release, update `versionName` and increase `versionCode` in `app/build.gradle.kts`. Every push to `main` validates the project, then builds a signed APK. If `v<versionName>` does not exist, the workflow creates a tag and GitHub release. Existing version tags skip publication.
 
 Configure repository Actions secrets:
 

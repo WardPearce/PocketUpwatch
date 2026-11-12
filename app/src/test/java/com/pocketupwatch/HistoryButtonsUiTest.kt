@@ -7,12 +7,10 @@ import android.graphics.Canvas
 import android.view.View
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
@@ -169,8 +167,11 @@ class HistoryButtonsUiTest {
         val service = runBlocking { dao.getService(id)!! }
         val vm = MonitorViewModel(ApplicationProvider.getApplicationContext<Application>(), dao)
         MonitorService.active.value = true
+        var titleGap = 0f
+        var backClicked = false
         compose.setContent {
             view = LocalView.current
+            titleGap = with(LocalDensity.current) { 16.dp.toPx() }
             MaterialTheme(colorScheme = lightColorScheme(
                 primary = Color(0xff4e5f91),
                 secondary = Color(0xff585e71),
@@ -179,7 +180,7 @@ class HistoryButtonsUiTest {
                 surface = Color(0xfffbf8ff),
                 surfaceContainerHighest = Color(0xffe3e2ee)
             )) {
-                Scaffold(topBar = { TopAppBar(title = { Text(service.name) }, navigationIcon = { AppIconButton(onClick = {}) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } }) }) { padding ->
+                Scaffold(topBar = { AppTopBar(service.name, onBack = { backClicked = true }) }) { padding ->
                     Detail(service, vm, Modifier.padding(padding), onEdit = {}, onDeleted = {})
                 }
             }
@@ -190,7 +191,12 @@ class HistoryButtonsUiTest {
         val actions = compose.onNodeWithTag("service-actions").fetchSemanticsNode().boundsInRoot
         val target = compose.onNodeWithTag("service-target").fetchSemanticsNode().boundsInRoot
         Assert.assertTrue(actions.bottom < target.top)
+        val back = compose.onNodeWithTag("app-back").fetchSemanticsNode().boundsInRoot
+        val title = compose.onNodeWithText(service.name).fetchSemanticsNode().boundsInRoot
+        Assert.assertTrue("Leave at least 16dp between Back and the service name", title.left - back.right >= titleGap - 1f)
         screenshot("service-details-light")
+        compose.onNodeWithTag("app-back").performClick()
+        Assert.assertTrue("The spaced back button must remain clickable", backClicked)
     }
     private fun assertAligned() {
         val previous = compose.onNodeWithTag("history-previous").assertIsDisplayed().fetchSemanticsNode().boundsInRoot

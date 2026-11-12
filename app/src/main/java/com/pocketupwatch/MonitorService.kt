@@ -61,6 +61,7 @@ class MonitorService : Service() {
         val notification = notification("Starting monitoring")
         if (Build.VERSION.SDK_INT >= 34) startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE) else startForeground(1, notification)
         active.value = true
+        MonitoringWidget.updateAll(this)
         network.registerDefaultNetworkCallback(callback)
         scope.launch { MonitorDb.get(this@MonitorService).dao().services().collect { wake.trySend(Unit) } }
         scope.launch { scheduler() }
@@ -159,7 +160,7 @@ class MonitorService : Service() {
             val alert = NotificationCompat.Builder(this, "alerts").setSmallIcon(android.R.drawable.stat_notify_error).setContentTitle("${service.name} $event").setContentText(result.detail).setContentIntent(openIntent(service.id)).setAutoCancel(true).build()
             publish((service.id % (Int.MAX_VALUE - 2)).toInt() + 2, alert)
         }
-        MonitoringWidget.updateAll(this)
+        MonitoringWidget.updateAll(this, service.id)
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_RUN) {
