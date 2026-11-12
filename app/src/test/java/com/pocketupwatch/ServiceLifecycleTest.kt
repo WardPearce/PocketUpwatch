@@ -27,7 +27,8 @@ class ServiceLifecycleTest {
             val deadline = System.nanoTime() + 10_000_000_000L
             while (System.nanoTime() < deadline) {
                 shadowOf(Looper.getMainLooper()).idle()
-                if (runBlocking { dao.latest(id) } != null && MonitorService.checksInProgress.value.isEmpty()) break
+                if (runBlocking { dao.latest(id) } != null && MonitorService.checksInProgress.value.isEmpty()
+                    && !org.robolectric.shadows.ShadowPowerManager.getLatestWakeLock().isHeld) break
                 Thread.sleep(10)
             }
             assertNotNull(runBlocking { dao.latest(id) })
