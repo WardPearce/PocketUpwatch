@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.5
+
+- Give secondary, icon, and unselected time-range buttons a solid theme-colored outline so pale fills remain distinct from their cards across light and dark accent colors.
+- Outline destructive buttons with the error color while preserving their filled backgrounds and the existing disabled states.
+
 ## 0.1.4
 
 - Keep history navigation available when new checks arrive outside the page's saved snapshot.

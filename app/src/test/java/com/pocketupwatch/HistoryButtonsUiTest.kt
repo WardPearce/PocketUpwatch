@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -170,7 +171,14 @@ class HistoryButtonsUiTest {
         MonitorService.active.value = true
         compose.setContent {
             view = LocalView.current
-            MaterialTheme {
+            MaterialTheme(colorScheme = lightColorScheme(
+                primary = Color(0xff4e5f91),
+                secondary = Color(0xff585e71),
+                secondaryContainer = Color(0xffdce2f9),
+                onSecondaryContainer = Color(0xff151b2c),
+                surface = Color(0xfffbf8ff),
+                surfaceContainerHighest = Color(0xffe3e2ee)
+            )) {
                 Scaffold(topBar = { TopAppBar(title = { Text(service.name) }, navigationIcon = { AppIconButton(onClick = {}) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } }) }) { padding ->
                     Detail(service, vm, Modifier.padding(padding), onEdit = {}, onDeleted = {})
                 }
