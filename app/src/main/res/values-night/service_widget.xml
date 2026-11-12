@@ -1,0 +1,9 @@
+<resources>
+    <color name="service_widget_background">#171D25</color>
+    <color name="service_widget_foreground">#E3E4ED</color>
+    <color name="service_widget_muted">#C5C6D0</color>
+    <color name="service_widget_track">#39414C</color>
+    <color name="service_widget_up">#83D9AF</color>
+    <color name="service_widget_down">#FFB4AB</color>
+    <color name="service_widget_unknown">#BDC7DC</color>
+</resources>

@@ -81,7 +81,7 @@ import kotlinx.coroutines.withContext
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         message?.let { Text(it) }
         Text("Android shortcuts", style = MaterialTheme.typography.titleLarge)
-        Text("Add the Pocket Upwatch widget from your launcher's widget picker. Add the monitoring tile from Quick Settings to pause or resume all monitors.")
+        Text("Add the Pocket Upwatch overview or Service uptime widget from your launcher's widget picker. Choose a service when adding a Service uptime widget; tap it to open that service. Add the monitoring tile from Quick Settings to pause or resume all monitors.")
         Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
     }
     preview?.let { monitors ->

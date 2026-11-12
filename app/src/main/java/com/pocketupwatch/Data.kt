@@ -40,6 +40,7 @@ data class Incident(@PrimaryKey(autoGenerate = true) val id: Long = 0, val servi
 data class HourlyStats(val serviceId: Long, val hour: Long, val upCount: Long = 0, val downCount: Long = 0, val skippedCount: Long = 0, val responseTotal: Long = 0, val responseMax: Long = 0)
 data class PeriodStats(val upCount: Long = 0, val downCount: Long = 0, val skippedCount: Long = 0)
 data class ChartBucket(val time: Long, val upCount: Long, val downCount: Long, val skippedCount: Long, val responseMs: Long)
+data class ServiceWidgetData(val service: ServiceEntry?, val latest: CheckEntry?, val buckets: List<ChartBucket>)
 
 data class HistoryVersion(val total: Int = 0, val latestId: Long = 0)
 data class HistoryPage(val checks: List<CheckEntry>, val total: Int, val page: Int, val anchorId: Long) {
@@ -70,6 +71,12 @@ data class HistoryPage(val checks: List<CheckEntry>, val total: Int, val page: I
     }
     @Query("SELECT COALESCE(SUM(CASE WHEN up = 1 AND skipped = 0 THEN 1 ELSE 0 END),0) AS upCount, COALESCE(SUM(CASE WHEN up = 0 AND skipped = 0 THEN 1 ELSE 0 END),0) AS downCount, COALESCE(SUM(skipped),0) AS skippedCount FROM checks WHERE serviceId = :id AND time >= :since") fun stats(id: Long, since: Long): Flow<PeriodStats>
     @Query("SELECT (time / :bucketMs) * :bucketMs AS time, SUM(CASE WHEN up = 1 AND skipped = 0 THEN 1 ELSE 0 END) AS upCount, SUM(CASE WHEN up = 0 AND skipped = 0 THEN 1 ELSE 0 END) AS downCount, SUM(skipped) AS skippedCount, CAST(AVG(CASE WHEN skipped = 0 THEN responseMs END) AS INTEGER) AS responseMs FROM checks WHERE serviceId = :id AND time >= :since GROUP BY time / :bucketMs ORDER BY time") fun buckets(id: Long, since: Long, bucketMs: Long): Flow<List<ChartBucket>>
+    @Query("SELECT (time / :bucketMs) * :bucketMs AS time, SUM(CASE WHEN up = 1 AND skipped = 0 THEN 1 ELSE 0 END) AS upCount, SUM(CASE WHEN up = 0 AND skipped = 0 THEN 1 ELSE 0 END) AS downCount, SUM(skipped) AS skippedCount, COALESCE(CAST(AVG(CASE WHEN skipped = 0 THEN responseMs END) AS INTEGER),0) AS responseMs FROM checks WHERE serviceId = :id AND time >= :since AND time <= :until GROUP BY time / :bucketMs ORDER BY time") suspend fun widgetBuckets(id: Long, since: Long, until: Long, bucketMs: Long): List<ChartBucket>
+    @Transaction suspend fun widgetData(id: Long, since: Long, until: Long, bucketMs: Long): ServiceWidgetData {
+        val service = getService(id)
+        return if (service == null) ServiceWidgetData(null, null, emptyList())
+        else ServiceWidgetData(service, latest(id), widgetBuckets(id, since, until, bucketMs))
+    }
     @Query("SELECT * FROM incidents WHERE serviceId = :id ORDER BY startedAt DESC LIMIT 100") fun incidents(id: Long): Flow<List<Incident>>
     @Query("SELECT * FROM incidents WHERE serviceId = :id ORDER BY startedAt") suspend fun exportIncidents(id: Long): List<Incident>
     @Query("SELECT * FROM hourly_stats WHERE serviceId = :id AND hour >= :since ORDER BY hour") fun rollups(id: Long, since: Long): Flow<List<HourlyStats>>

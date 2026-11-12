@@ -15,7 +15,8 @@ import kotlinx.coroutines.flow.first
 class MonitoringWidget : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) { refresh(context, ids, goAsync()) }
     companion object {
-        fun updateAll(context: Context) {
+        fun updateAll(context: Context, serviceId: Long? = null) {
+            ServiceWidget.updateAll(context, serviceId)
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, MonitoringWidget::class.java))
             if (ids.isNotEmpty()) context.sendBroadcast(Intent(context, MonitoringWidget::class.java).setAction(AppWidgetManager.ACTION_APPWIDGET_UPDATE).putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids))

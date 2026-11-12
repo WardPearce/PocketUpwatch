@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.6
+
+- Add a configurable Service uptime home-screen widget with a service picker, current status, 24-hour uptime percentage, availability graph, and a link to the selected service. Each widget has its own selection and refreshes after monitoring and configuration changes.
+- Apply the stronger button outlines only in light mode; restore the original filled button appearance in dark mode and honor the app's theme override.
+- Increase the space between the back button and page title to 16dp, including service names.
+
 ## 0.1.5
 
 - Give secondary, icon, and unselected time-range buttons a solid theme-colored outline so pale fills remain distinct from their cards across light and dark accent colors.

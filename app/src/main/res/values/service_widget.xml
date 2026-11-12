@@ -1,0 +1,19 @@
+<resources>
+    <string name="service_widget_name">Service uptime</string>
+    <string name="service_widget_description">Uptime and a 24-hour availability graph for one service.</string>
+    <string name="service_widget_choose">Choose a service</string>
+    <string name="service_widget_period">Uptime · last 24h</string>
+    <string name="service_widget_empty_uptime">—</string>
+    <string name="service_widget_start">24h ago</string>
+    <string name="service_widget_end">Now</string>
+    <string name="service_widget_up">Up</string>
+    <string name="service_widget_down">Down</string>
+    <string name="service_widget_unknown">No data / skipped</string>
+    <color name="service_widget_background">#F7F8FD</color>
+    <color name="service_widget_foreground">#1B1B21</color>
+    <color name="service_widget_muted">#47464F</color>
+    <color name="service_widget_track">#DCE1EB</color>
+    <color name="service_widget_up">#0A6845</color>
+    <color name="service_widget_down">#B3261E</color>
+    <color name="service_widget_unknown">#555D6A</color>
+</resources>

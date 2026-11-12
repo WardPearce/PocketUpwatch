@@ -37,8 +37,10 @@ class ButtonContrastTest {
     @get:Rule val compose = createComposeRule()
     private var view: View? = null
 
-    @Test fun lightButtonsHaveVisibleBoundariesAcrossAccentColors() = verifyPalettes(false)
-    @Test fun darkButtonsHaveVisibleBoundariesAcrossAccentColors() = verifyPalettes(true)
+    @Test
+    @Config(qualifiers = "w412dp-h915dp-night-xxhdpi")
+    fun lightButtonsHaveVisibleBoundariesEvenWhenSystemThemeIsDark() = verifyPalettes(false)
+    @Test fun darkButtonsKeepTheirOriginalFilledStyleAcrossAccentColors() = verifyPalettes(true)
 
     private fun verifyPalettes(dark: Boolean) {
         // Representative Material dynamic-color roles, including the pale blue from the report.
@@ -99,10 +101,10 @@ class ButtonContrastTest {
             val bitmap = drawScreen()
             try {
                 for (tag in listOf("edit", "back", "fullscreen", "period")) {
-                    assertContrast(bitmap, tag, palette.secondary, palette.secondaryContainer, palette.onSecondaryContainer)
+                    assertContrast(bitmap, tag, palette.secondary, palette.secondaryContainer, palette.onSecondaryContainer, outlined = !dark)
                 }
-                assertContrast(bitmap, "delete", palette.error, palette.errorContainer, palette.onErrorContainer)
-                assertContrast(bitmap, "selected-period", palette.primary, palette.primary, palette.onPrimary)
+                assertContrast(bitmap, "delete", palette.error, palette.errorContainer, palette.onErrorContainer, outlined = !dark)
+                assertContrast(bitmap, "selected-period", palette.primary, palette.primary, palette.onPrimary, outlined = !dark)
                 val path = File("build/outputs/editor-preview/button-contrast-${if (dark) "dark" else "light"}-$name.png")
                 path.parentFile!!.mkdirs()
                 path.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
@@ -120,17 +122,19 @@ class ButtonContrastTest {
         return bitmap
     }
 
-    private fun assertContrast(bitmap: Bitmap, tag: String, border: Color, fill: Color, content: Color) {
+    private fun assertContrast(bitmap: Bitmap, tag: String, border: Color, fill: Color, content: Color, outlined: Boolean) {
         val bounds = compose.onNodeWithTag(tag).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val left = bounds.left.roundToInt()
         val centerY = bounds.center.y.roundToInt()
         val actualBorder = bitmap.getPixel(left + 1, centerY)
         val actualFill = bitmap.getPixel(left + 12, centerY)
         val surroundingSurface = bitmap.getPixel(left - 2, centerY)
-        assertEquals("$tag must draw its outline", border.toArgb(), actualBorder)
+        assertEquals("$tag must only draw an outline in light mode", (if (outlined) border else fill).toArgb(), actualBorder)
         assertEquals("$tag must keep its filled background", fill.toArgb(), actualFill)
-        assertTrue("$tag boundary must contrast 3:1 with its surroundings", ColorUtils.calculateContrast(actualBorder, surroundingSurface) >= 3.0)
-        assertTrue("$tag boundary must contrast 3:1 with its fill", actualBorder == actualFill || ColorUtils.calculateContrast(actualBorder, actualFill) >= 3.0)
+        if (outlined) {
+            assertTrue("$tag boundary must contrast 3:1 with its surroundings", ColorUtils.calculateContrast(actualBorder, surroundingSurface) >= 3.0)
+            assertTrue("$tag boundary must contrast 3:1 with its fill", actualBorder == actualFill || ColorUtils.calculateContrast(actualBorder, actualFill) >= 3.0)
+        }
         assertTrue("$tag label/icon must contrast 4.5:1 with its fill", ColorUtils.calculateContrast(content.toArgb(), actualFill) >= 4.5)
         val contentDrawn = (bounds.top.roundToInt() until bounds.bottom.roundToInt()).any { y ->
             (left until bounds.right.roundToInt()).any { x -> bitmap.getPixel(x, y) == content.toArgb() }

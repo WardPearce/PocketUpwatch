@@ -1,0 +1,5 @@
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp" android:minHeight="200dp" android:minResizeWidth="180dp" android:minResizeHeight="200dp"
+    android:initialLayout="@layout/service_widget" android:description="@string/service_widget_description"
+    android:configure="com.pocketupwatch.ServiceWidgetConfigureActivity" android:widgetFeatures="reconfigurable"
+    android:resizeMode="horizontal|vertical" android:widgetCategory="home_screen" android:updatePeriodMillis="1800000" />
