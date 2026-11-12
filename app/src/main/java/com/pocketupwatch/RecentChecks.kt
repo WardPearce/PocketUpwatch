@@ -19,9 +19,14 @@ import java.text.DateFormat
 import java.util.Date
 
 @Composable internal fun RecentChecks(id: Long, dao: MonitorDao) {
-    val version by remember(id) { dao.historyVersion(id) }.collectAsStateWithLifecycle(initialValue = HistoryVersion())
     var page by rememberSaveable(id) { mutableIntStateOf(0) }
     var anchor by rememberSaveable(id) { mutableLongStateOf(0) }
+    // New checks must not reload an older snapshot and disable navigation mid-click.
+    // Deletions within that snapshot still invalidate its count and clamp expired pages.
+    val observedAnchor = if (page == 0) 0L else anchor
+    val version by remember(id, observedAnchor) {
+        dao.historyVersion(id, observedAnchor)
+    }.collectAsStateWithLifecycle(initialValue = HistoryVersion())
     var data by remember(id) { mutableStateOf<HistoryPage?>(null) }
     var loading by remember(id) { mutableStateOf(true) }
     var error by remember(id) { mutableStateOf(false) }

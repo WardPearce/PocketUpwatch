@@ -58,7 +58,7 @@ data class HistoryPage(val checks: List<CheckEntry>, val total: Int, val page: I
     @Query("SELECT * FROM checks WHERE serviceId = :id ORDER BY time DESC, id DESC LIMIT 1") suspend fun latest(id: Long): CheckEntry?
     @Query("SELECT * FROM checks WHERE serviceId = :id ORDER BY time, id") suspend fun exportHistory(id: Long): List<CheckEntry>
     @Query("SELECT * FROM checks WHERE serviceId = :id AND time >= :since ORDER BY time DESC, id DESC LIMIT :limit OFFSET :offset") suspend fun page(id: Long, since: Long, limit: Int = 50, offset: Int = 0): List<CheckEntry>
-    @Query("SELECT COUNT(*) AS total, COALESCE(MAX(id),0) AS latestId FROM checks WHERE serviceId = :id") fun historyVersion(id: Long): Flow<HistoryVersion>
+    @Query("SELECT COUNT(*) AS total, COALESCE(MAX(id),0) AS latestId FROM checks WHERE serviceId = :id AND (:anchorId = 0 OR id <= :anchorId)") fun historyVersion(id: Long, anchorId: Long = 0): Flow<HistoryVersion>
     @Query("SELECT COALESCE(MAX(id),0) FROM checks WHERE serviceId = :id") suspend fun historyAnchor(id: Long): Long
     @Query("SELECT COUNT(*) FROM checks WHERE serviceId = :id AND id <= :anchorId") suspend fun historyCount(id: Long, anchorId: Long): Int
     @Query("SELECT * FROM checks WHERE serviceId = :id AND id <= :anchorId ORDER BY time DESC, id DESC LIMIT 50 OFFSET :offset") suspend fun historyRows(id: Long, anchorId: Long, offset: Int): List<CheckEntry>
