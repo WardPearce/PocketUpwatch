@@ -20,6 +20,13 @@ import androidx.test.core.app.ApplicationProvider
 import java.io.File
 import kotlin.math.abs
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.withTimeout
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.*
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -44,8 +51,8 @@ class HistoryButtonsUiTest {
         val now = System.currentTimeMillis()
         repeat(count) { index -> dao.record(CheckEntry(serviceId = id, time = now - (count - index) * 60_000, up = index % 7 != 0, responseMs = 90L + index % 10, detail = if (index % 7 == 0) "HTTP 503" else "HTTP 200")) }
     }
-    private fun showHistory() {
-        compose.setContent { view = LocalView.current; MaterialTheme { Surface { Column(Modifier.fillMaxSize().padding(16.dp)) { Text("Production API", style = MaterialTheme.typography.headlineSmall); Spacer(Modifier.height(16.dp)); RecentChecks(id, dao) } } } }
+    private fun showHistory(historyDao: MonitorDao = dao) {
+        compose.setContent { view = LocalView.current; MaterialTheme { Surface { Column(Modifier.fillMaxSize().padding(16.dp)) { Text("Production API", style = MaterialTheme.typography.headlineSmall); Spacer(Modifier.height(16.dp)); RecentChecks(id, historyDao) } } } }
     }
     private fun waitForPage(text: String) = compose.waitUntil(10_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() && compose.onAllNodesWithTag("history-loading").fetchSemanticsNodes().isEmpty() }
 
@@ -100,6 +107,52 @@ class HistoryButtonsUiTest {
         waitForPage("Page 1 of 1")
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("check-121").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("history-next").assertIsNotEnabled()
+    }
+    @Test fun incomingCheckDoesNotReloadOrDisableNavigationOnAnOlderPage() {
+        seed(120)
+        val observedVersions = Channel<HistoryVersion>(Channel.UNLIMITED)
+        val pageLoads = AtomicInteger()
+        val holdReload = AtomicBoolean(false)
+        val releaseReload = CompletableDeferred<Unit>()
+        val tracked = object : MonitorDao by dao {
+            override fun historyVersion(id: Long, anchorId: Long): Flow<HistoryVersion> =
+                dao.historyVersion(id, anchorId).onEach { observedVersions.trySend(it) }
+            override suspend fun historyPage(id: Long, requestedPage: Int, anchorId: Long): HistoryPage {
+                pageLoads.incrementAndGet()
+                if (holdReload.get()) releaseReload.await()
+                return dao.historyPage(id, requestedPage, anchorId)
+            }
+        }
+        showHistory(tracked)
+        waitForPage("Page 1 of 3")
+        compose.onNodeWithTag("history-next").performClick()
+        waitForPage("Page 2 of 3")
+        compose.waitForIdle()
+        while (observedVersions.tryReceive().isSuccess) { /* Drain initial page observations. */ }
+        val loadsBefore = pageLoads.get()
+        holdReload.set(true)
+        try {
+            runBlocking {
+                dao.record(CheckEntry(serviceId = id, time = System.currentTimeMillis(), up = true, responseMs = 100, detail = "new"))
+                // Wait for the actual Room invalidation, rather than a node still present from the old page.
+                withTimeout(10_000) { observedVersions.receive() }
+            }
+            compose.waitForIdle()
+            Assert.assertEquals("Incoming checks must not reload an anchored page", loadsBefore, pageLoads.get())
+            compose.onNodeWithTag("history-next").assertIsEnabled()
+            compose.onNodeWithTag("history-loading").assertDoesNotExist()
+            compose.onNodeWithTag("check-70").assertExists()
+        } finally {
+            holdReload.set(false)
+            releaseReload.complete(Unit)
+        }
+        compose.onNodeWithTag("history-next").performClick()
+        waitForPage("Page 3 of 3")
+        compose.onNodeWithTag("history-previous").performClick()
+        waitForPage("Page 2 of 3")
+        compose.onNodeWithTag("history-previous").performClick()
+        waitForPage("Page 1 of 3")
+        compose.onNodeWithTag("check-121").assertExists()
     }
     @Test
     @Config(qualifiers = "w320dp-h740dp-xhdpi")

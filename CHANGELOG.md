@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4
+
+- Keep history navigation available when new checks arrive outside the page's saved snapshot.
+- Continue refreshing the first page live and clamping older pages after retention cleanup.
+- Add a deterministic regression for the CI failure caused by a background refresh disabling Next.
+
 ## 0.1.3
 
 - Use filled buttons with 8dp corners and consistent touch targets throughout the app, including the add/edit form.
