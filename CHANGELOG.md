@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.7
+
+- Restore the five-minute minimum for monitoring intervals and upgrade existing shorter intervals.
+- Keep the CPU awake through background result persistence and alarm rescheduling, releasing bounded wake locks while waiting between checks.
+- Expose alarm delivery, scheduler, result, and blocked-restart diagnostics in settings.
+
 ## 0.1.6
 
 - Add a configurable Service uptime home-screen widget with a service picker, current status, 24-hour uptime percentage, availability graph, and a link to the selected service. Each widget has its own selection and refreshes after monitoring and configuration changes.

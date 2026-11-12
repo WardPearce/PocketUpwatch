@@ -77,19 +77,19 @@ class EditorRedesignTest {
         compose.waitUntil(10_000) { saved != null }
         assertEquals(8, saved!!.timeoutSeconds)
     }
-    @Test fun oneMinuteIntervalShowsBatteryWarningAndSaves() {
-        val existing = ServiceEntry(id = 3, name = "Production API", url = "https://example.com/health", intervalSeconds = 300)
+    @Test fun legacyOneMinuteIntervalIsRaisedToFiveMinutes() {
+        val existing = ServiceEntry(id = 3, name = "Production API", url = "https://example.com/health", intervalSeconds = 60)
         var saved: ServiceEntry? = null
         compose.setContent { screenshotView = LocalView.current; MaterialTheme { Surface { ServiceEditor(existing, onCancel = {}, probe = ok, onSave = { saved = it }) } } }
         compose.onNodeWithTag("interval-battery-warning").assertDoesNotExist()
         compose.onNodeWithTag("interval-slider").performScrollTo().performSemanticsAction(SemanticsActions.SetProgress) { it(0f) }
-        compose.onNodeWithText("Check interval: 1min").assertExists()
-        compose.onNodeWithTag("interval-battery-warning").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Check interval: 5min").assertExists()
+        compose.onNodeWithTag("interval-battery-warning").assertDoesNotExist()
         compose.onNodeWithText("Save").assertIsEnabled()
-        saveScreenshot("one-minute-warning")
+        saveScreenshot("five-minute-minimum")
         compose.onNodeWithText("Save").performClick()
         compose.waitUntil(10_000) { saved != null }
-        assertEquals(60, saved!!.intervalSeconds)
+        assertEquals(300, saved!!.intervalSeconds)
     }
     private fun saveScreenshot(name: String) {
         compose.runOnIdle {

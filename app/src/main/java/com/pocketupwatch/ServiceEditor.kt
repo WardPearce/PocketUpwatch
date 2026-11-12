@@ -39,7 +39,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
     var name by rememberSaveable(existing?.id) { mutableStateOf(existing?.name ?: "") }
     var protocol by rememberSaveable(existing?.id) { mutableStateOf(existing?.url?.substringBefore("://") ?: "https") }
     var target by rememberSaveable(existing?.id) { mutableStateOf(existing?.url?.substringAfter("://") ?: "") }
-    var interval by rememberSaveable(existing?.id) { mutableIntStateOf(existing?.intervalSeconds ?: 300) }
+    var interval by rememberSaveable(existing?.id) { mutableIntStateOf((existing?.intervalSeconds ?: 300).coerceAtLeast(300)) }
     var tags by rememberSaveable(existing?.id) { mutableStateOf(existing?.tags ?: "") }
     var method by rememberSaveable(existing?.id) { mutableStateOf(existing?.method ?: "GET") }
     var anySuccess by rememberSaveable(existing?.id) { mutableStateOf(existing?.expectedCode?.let { it == 0 } ?: true) }
