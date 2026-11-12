@@ -86,7 +86,7 @@ internal object MonitorStatus {
 internal object CheckSchedule {
     fun restoredDeadline(service: ServiceEntry, latest: CheckEntry?, wallNow: Long, elapsedNow: Long): Long {
         if (latest == null) return elapsedNow
-        val interval = service.intervalSeconds * 1_000L
+        val interval = service.intervalSeconds.coerceAtLeast(300) * 1_000L
         return elapsedNow + (interval - (wallNow - latest.time).coerceAtLeast(0)).coerceIn(0, interval)
     }
     fun alarmSeconds(deadlines: Collection<Long>, elapsedNow: Long): Int? = deadlines.minOrNull()?.let { ((it - elapsedNow).coerceAtLeast(1) + 999).div(1_000).coerceAtMost(Int.MAX_VALUE.toLong()).toInt() }

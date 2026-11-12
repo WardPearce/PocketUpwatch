@@ -9,6 +9,8 @@ import android.os.*
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -41,6 +43,7 @@ class MonitorService : Service() {
     }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val wake = Channel<Unit>(Channel.CONFLATED)
+    private val checkSlots = Semaphore(4)
     private val running = mutableMapOf<Long, Job>()
     private val configs = mutableMapOf<Long, ServiceEntry>()
     private val deadlines = mutableMapOf<Long, Long>()
@@ -82,64 +85,79 @@ class MonitorService : Service() {
         while (currentCoroutineContext().isActive) {
             wake.receive()
             try {
-                val dao = MonitorDb.get(this).dao()
-                val enabled = dao.allServices().filter { it.enabled }
-                val ids = enabled.map { it.id }.toSet()
-                (configs.keys - ids).forEach { id -> running.remove(id)?.cancelAndJoin(); configs.remove(id); deadlines.remove(id) }
-                checksInProgress.value = checksInProgress.value.intersect(ids)
-                if (enabled.isEmpty()) {
-                    CheckAlarm.schedule(this, null)
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
-                    active.value = false
-                    MonitoringWidget.updateAll(this)
-                    return
-                }
-                val now = SystemClock.elapsedRealtime()
-                val wall = System.currentTimeMillis()
-                val connection = connectivity()
-                val networkChanged = networkSignature != null && connection != networkSignature && connection.first
-                networkSignature = connection
-                enabled.forEach { service ->
-                    val prior = configs[service.id]
-                    if (prior != service) {
-                        running.remove(service.id)?.cancelAndJoin()
-                        configs[service.id] = service
-                        deadlines[service.id] = if (prior == null) CheckSchedule.restoredDeadline(service, dao.latest(service.id), wall, now) else now
+                withBackgroundWakeLock(this, "scheduler", 90_000) {
+                    val dao = MonitorDb.get(this).dao()
+                    val enabled = dao.allServices().filter { it.enabled }
+                    val ids = enabled.map { it.id }.toSet()
+                    (configs.keys - ids).forEach { id -> running.remove(id)?.cancelAndJoin(); configs.remove(id); deadlines.remove(id) }
+                    checksInProgress.value = checksInProgress.value.intersect(ids)
+                    if (enabled.isEmpty()) {
+                        CheckAlarm.schedule(this, null)
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf()
+                        active.value = false
+                        MonitoringWidget.updateAll(this)
+                        return@withBackgroundWakeLock
                     }
-                    if (service.id in forced || networkChanged && running[service.id]?.isActive != true) deadlines[service.id] = now
-                }
-                forced.clear()
-                enabled.forEach { service ->
-                    if (running[service.id]?.isActive != true && (deadlines[service.id] ?: now) <= now) {
-                        deadlines[service.id] = Long.MAX_VALUE
-                        checksInProgress.value += service.id
-                        running[service.id] = scope.launch {
-                            try { check(service) }
-                            catch (e: CancellationException) { throw e }
-                            catch (_: Exception) { publish(1, notification("Could not store a check · retrying next interval")) }
-                            finally {
-                                checksInProgress.value -= service.id
-                                if (configs[service.id] == service) deadlines[service.id] = SystemClock.elapsedRealtime() + service.intervalSeconds * 1_000L
-                                wake.trySend(Unit)
+                    val now = SystemClock.elapsedRealtime()
+                    val wall = System.currentTimeMillis()
+                    val connection = connectivity()
+                    val networkChanged = networkSignature != null && connection != networkSignature && connection.first
+                    networkSignature = connection
+                    enabled.forEach { service ->
+                        val prior = configs[service.id]
+                        if (prior != service) {
+                            running.remove(service.id)?.cancelAndJoin()
+                            configs[service.id] = service
+                            deadlines[service.id] = if (prior == null) CheckSchedule.restoredDeadline(service, dao.latest(service.id), wall, now) else now
+                        }
+                        if (service.id in forced || networkChanged && running[service.id]?.isActive != true) deadlines[service.id] = now
+                    }
+                    forced.clear()
+                    enabled.forEach { service ->
+                        if (running[service.id]?.isActive != true && (deadlines[service.id] ?: now) <= now) {
+                            deadlines[service.id] = Long.MAX_VALUE
+                            checksInProgress.value += service.id
+                            running[service.id] = scope.launch {
+                                checkSlots.withPermit {
+                                    withBackgroundWakeLock(this@MonitorService, "check", (service.timeoutSeconds + 90) * 1_000L) {
+                                        try { check(service) }
+                                        catch (e: CancellationException) { throw e }
+                                        catch (e: Exception) {
+                                            BackgroundDiagnostics.failure(this@MonitorService, "Check persistence", e)
+                                            publish(1, notification("Could not store a check · retrying next interval"))
+                                        } finally {
+                                            checksInProgress.value -= service.id
+                                            if (configs[service.id] == service) deadlines[service.id] = SystemClock.elapsedRealtime() + service.intervalSeconds.coerceAtLeast(300) * 1_000L
+                                            try {
+                                                if (active.value) CheckAlarm.schedule(this@MonitorService, CheckSchedule.alarmSeconds(deadlines.values.filter { it != Long.MAX_VALUE }, SystemClock.elapsedRealtime()) ?: 300)
+                                            } catch (e: Exception) { BackgroundDiagnostics.failure(this@MonitorService, "Alarm scheduling", e) }
+                                            finally { wake.trySend(Unit) }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
+                    val pending = deadlines.values.filter { it != Long.MAX_VALUE }
+                    val seconds = CheckSchedule.alarmSeconds(pending, SystemClock.elapsedRealtime()) ?: enabled.minOf { it.intervalSeconds }
+                    CheckAlarm.schedule(this, seconds)
+                    publish(1, notification("${enabled.size} enabled · next check in about ${seconds.coerceAtLeast(1)} seconds"))
+                    if (wall - lastPruned > 3_600_000) {
+                        lastPruned = wall
+                        val retention = getSharedPreferences("settings", MODE_PRIVATE).getInt("retention_days", 90).coerceIn(7, 365)
+                        dao.pruneChecks(wall - retention * 86_400_000L)
+                        dao.pruneHours(wall - 365 * 86_400_000L)
+                    }
+                    BackgroundDiagnostics.mark(this, "last_cycle")
                 }
-                val pending = deadlines.values.filter { it != Long.MAX_VALUE }
-                val seconds = CheckSchedule.alarmSeconds(pending, SystemClock.elapsedRealtime()) ?: enabled.minOf { it.intervalSeconds }
-                CheckAlarm.schedule(this, seconds)
-                publish(1, notification("${enabled.size} enabled · next check in about ${seconds.coerceAtLeast(1)} seconds"))
-                if (wall - lastPruned > 3_600_000) {
-                    lastPruned = wall
-                    val retention = getSharedPreferences("settings", MODE_PRIVATE).getInt("retention_days", 90).coerceIn(7, 365)
-                    dao.pruneChecks(wall - retention * 86_400_000L)
-                    dao.pruneHours(wall - 365 * 86_400_000L)
-                }
+                if (!active.value) return
+                val seconds = CheckSchedule.alarmSeconds(deadlines.values.filter { it != Long.MAX_VALUE }, SystemClock.elapsedRealtime()) ?: 300
                 withTimeoutOrNull(seconds * 1_000L) { wake.receive() }
                 wake.trySend(Unit)
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) {
+            catch (e: Exception) {
+                BackgroundDiagnostics.failure(this, "Scheduler", e)
                 publish(1, notification("Monitoring interrupted · retrying in one minute"))
                 CheckAlarm.schedule(this, 60)
                 delay(60_000)
@@ -156,6 +174,7 @@ class MonitorService : Service() {
         if (skip == null && (!after.first || before != after && result.up == false)) result = ProbeResult(null, "Network changed during check")
         currentCoroutineContext().ensureActive()
         val event = dao.recordIfUnchanged(service, CheckEntry(serviceId = service.id, time = System.currentTimeMillis(), up = result.up == true, responseMs = result.responseMs, detail = result.detail, skipped = result.up == null))
+        BackgroundDiagnostics.mark(this, "last_result")
         if (event != null && androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled()) {
             val alert = NotificationCompat.Builder(this, "alerts").setSmallIcon(android.R.drawable.stat_notify_error).setContentTitle("${service.name} $event").setContentText(result.detail).setContentIntent(openIntent(service.id)).setAutoCancel(true).build()
             publish((service.id % (Int.MAX_VALUE - 2)).toInt() + 2, alert)

@@ -129,7 +129,12 @@ abstract class MonitorDb : RoomDatabase() {
                 db.execSQL("INSERT INTO hourly_stats SELECT serviceId, (time / 3600000) * 3600000, SUM(CASE WHEN up = 1 THEN 1 ELSE 0 END), SUM(CASE WHEN up = 0 THEN 1 ELSE 0 END), 0, SUM(responseMs), MAX(responseMs) FROM checks GROUP BY serviceId, time / 3600000")
             }
         }
+        internal val MINIMUM_INTERVAL_CALLBACK = object : RoomDatabase.Callback() {
+            override fun onOpen(db: SupportSQLiteDatabase) {
+                db.execSQL("UPDATE services SET intervalSeconds = 300 WHERE intervalSeconds < 300")
+            }
+        }
         @Volatile private var instance: MonitorDb? = null
-        fun get(context: Context): MonitorDb = instance ?: synchronized(this) { instance ?: Room.databaseBuilder(context.applicationContext, MonitorDb::class.java, "monitor.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it } }
+        fun get(context: Context): MonitorDb = instance ?: synchronized(this) { instance ?: Room.databaseBuilder(context.applicationContext, MonitorDb::class.java, "monitor.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).addCallback(MINIMUM_INTERVAL_CALLBACK).build().also { instance = it } }
     }
 }

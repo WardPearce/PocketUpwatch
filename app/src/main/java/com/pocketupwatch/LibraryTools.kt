@@ -60,6 +60,7 @@ import kotlinx.coroutines.withContext
     }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         ChoiceMenu("Theme", mode, listOf("System", "Light", "Dark"), onMode)
+        BackgroundStatus()
         ChoiceMenu("Keep raw history", "$retention days", listOf("30 days", "90 days", "180 days", "365 days")) { retention = it.substringBefore(' ').toInt(); prefs.edit().putInt("retention_days", retention).apply() }
         Text("Old raw checks are cleaned up during monitoring. Hourly summaries are kept for one year. Incidents remain until their monitor is deleted.", style = MaterialTheme.typography.bodySmall)
         AppSecondaryButton(onClick = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }, modifier = Modifier.fillMaxWidth()) { Text("Open battery and notification settings") }
@@ -92,6 +93,25 @@ import kotlinx.coroutines.withContext
                 finally { preview = null }
             } }) { Text("Import paused copies") }
         }, dismissButton = { AppSecondaryButton(onClick = { preview = null }) { Text("Cancel") } })
+    }
+}
+
+@Composable private fun BackgroundStatus() {
+    val context = LocalContext.current
+    var refresh by remember { mutableIntStateOf(0) }
+    val diagnostics = remember(refresh) { BackgroundDiagnostics.prefs(context).all }
+    DetailSection {
+        Text("Background monitoring", style = MaterialTheme.typography.titleMedium)
+        Text(if (CheckAlarm.canScheduleExact(context)) "Exact alarms allowed" else "Exact alarms are off. Android may delay checks and block restarting monitoring from a delayed alarm.")
+        val power = context.getSystemService(android.os.PowerManager::class.java)
+        Text(if (power.isIgnoringBatteryOptimizations(context.packageName)) "Battery optimization: unrestricted" else "Battery optimization is enabled; Android may delay background work.")
+        listOf("last_alarm" to "Last alarm delivered", "last_cycle" to "Last scheduler cycle", "last_result" to "Last saved check", "last_error_time" to "Last background error").forEach { (key, label) ->
+            val time = diagnostics[key] as? Long ?: 0
+            Text("$label: ${if (time == 0L) "None recorded" else java.text.DateFormat.getDateTimeInstance().format(java.util.Date(time))}", style = MaterialTheme.typography.bodySmall)
+        }
+        (diagnostics["last_error"] as? String)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (!CheckAlarm.canScheduleExact(context)) AppSecondaryButton(onClick = { context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}"))) }) { Text("Allow timely alarms") }
+        AppSecondaryButton(onClick = { refresh++ }) { Text("Refresh diagnostics") }
     }
 }
 

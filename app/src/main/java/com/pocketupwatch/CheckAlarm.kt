@@ -18,6 +18,7 @@ object CheckAlarm {
         val alarms = context.getSystemService(AlarmManager::class.java)
         val operation = pending(context)
         if (seconds == null) { alarms.cancel(operation); return }
+        BackgroundDiagnostics.mark(context, "last_scheduled")
         val trigger = SystemClock.elapsedRealtime() + seconds.coerceAtLeast(1) * 1000L
         try {
             if (canScheduleExact(context)) alarms.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, trigger, operation)
@@ -30,13 +31,15 @@ object CheckAlarm {
 
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        BackgroundDiagnostics.mark(context, "last_alarm")
         // Keep the CPU awake across delivery and service startup; the service releases its own lock after checking.
         val lock = context.getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PocketUpwatch:alarmDelivery")
         lock.acquire(10_000L)
         try {
             ContextCompat.startForegroundService(context, Intent(context, MonitorService::class.java).setAction(CheckAlarm.ACTION_CHECK))
         } catch (e: Exception) {
-            lock.release()
+            if (lock.isHeld) lock.release()
+            BackgroundDiagnostics.failure(context, "Background restart blocked", e)
             // Background-start restrictions can reject delivery; opening the app restores monitoring.
         }
         // The bounded delivery lock bridges the asynchronous service startup.

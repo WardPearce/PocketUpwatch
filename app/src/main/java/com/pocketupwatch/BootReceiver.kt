@@ -16,7 +16,9 @@ class BootReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 if (MonitorDb.get(context).dao().services().first().any { it.enabled }) {
-                    runCatching { MonitorService.start(context) }
+                    runCatching { MonitorService.start(context) }.onFailure {
+                        if (it is Exception) BackgroundDiagnostics.failure(context, "Boot restart blocked", it)
+                    }
                 }
             } finally {
                 pending.finish()
