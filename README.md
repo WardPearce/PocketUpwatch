@@ -6,7 +6,7 @@ An Android uptime monitor built with Kotlin, Compose, and Room. Monitor HTTP(S),
 
 The add/edit form groups service details and monitoring essentials into cards. Expand request, response, authentication, alerts, or organization sections only when needed; closed sections summarize their current settings. Save and Cancel stay visible at the bottom, and existing settings are preserved when editing.
 
-Add a target, choose a check interval from 5 minutes to 24 hours with the interval slider, and save it. Save checks the target first; a failed or unknown check keeps the editor open and shows an error. Monitors begin checking when saved; each can be paused independently. Search names, targets, or tags, sort by status/name/tag, or pause/resume the whole collection.
+Add a target, choose a check interval from 1 minute to 24 hours with the interval slider, and save it. Save checks the target first; a failed or unknown check keeps the editor open and shows an error. Intervals under 5 minutes show a battery-drain warning. Monitors begin checking when saved; each can be paused independently. Search names, targets, or tags, sort by status/name/tag, or pause/resume the whole collection.
 
 | Protocol | Example | What it checks |
 | --- | --- | --- |
@@ -24,7 +24,7 @@ Response assertions support exact text, structural JSON, and XML. JSON object ke
 
 Configure consecutive failure/recovery thresholds (default for new monitors: one failure and one recovery), initial-down alerts, repeat reminders, and maintenance windows. Unknown/skipped checks break pending streaks and never count as endpoint failures or recovery. Confirmed incidents record observed start/end times, failure reasons, and failed/unknown check counts. Notifications open the affected monitor. Grant notification permission to receive alerts.
 
-The detail screen shows availability and mean response times for 1 hour, 24 hours, 7 days, or 30 days. Statistics query the selected period; graphs aggregate samples into time buckets. Recent raw checks are paginated independently. Unknown and missing checks are excluded from success rates. A successful sample percentage does not establish continuous uptime. Open either graph in landscape fullscreen. Stale state refreshes while viewing a screen, even when no new checks arrive.
+The detail screen shows availability and mean response times for 1 hour, 24 hours, 7 days, or 30 days. Statistics query the selected period; graphs aggregate samples into time buckets. Recent raw checks are paginated independently, with aligned Previous/Next controls and an explicit page count. Older pages stay anchored while new checks arrive; returning to the first page shows the latest samples. Unknown and missing checks are excluded from success rates. A successful sample percentage does not establish continuous uptime. Open either graph in landscape fullscreen. Stale state refreshes while viewing a screen, even when no new checks arrive.
 
 Raw-history retention is configurable in settings (30/90/180/365 days; default 90). Cleanup runs during monitoring and retains each monitor's latest result. Hourly summaries are retained for one year; incidents remain until their monitor is deleted. Deleting a monitor deletes its history, summaries, and incidents. Export checks or incidents as CSV from its detail screen.
 
@@ -58,7 +58,7 @@ Pull requests run tests, Android lint, and the debug build without signing secre
 
 ## Android releases
 
-Version 0.1.2 uses version code 8. Before the next release, update `versionName` and increase `versionCode` in `app/build.gradle.kts`. Every push to `main` validates the project, then builds a signed APK. If `v<versionName>` does not exist, the workflow creates a tag and GitHub release. Existing version tags skip publication.
+Version 0.1.3 uses version code 9. Before the next release, update `versionName` and increase `versionCode` in `app/build.gradle.kts`. Every push to `main` validates the project, then builds a signed APK. If `v<versionName>` does not exist, the workflow creates a tag and GitHub release. Existing version tags skip publication.
 
 Configure repository Actions secrets:
 

@@ -91,7 +91,7 @@ internal object ServiceValidation {
     fun error(service: ServiceEntry, headers: Map<String, String> = emptyMap(), allowIncompleteBody: Boolean = false): String? = when {
         service.name.isBlank() || service.name.length > 200 -> "Enter a name of up to 200 characters"
         MonitorTarget.parse(service.url) == null -> "Enter a valid target"
-        service.intervalSeconds !in 300..86400 -> "Interval must be between 5 minutes and 24 hours"
+        service.intervalSeconds !in 60..86400 -> "Interval must be between 1 minute and 24 hours"
         service.timeoutSeconds !in 1..60 -> "Timeout must be between 1 and 60 seconds"
         service.expectedCode != 0 && service.expectedCode !in 100..599 -> "Choose any 2xx or an HTTP status from 100 to 599"
         service.method !in listOf("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE") -> "Unsupported HTTP method"

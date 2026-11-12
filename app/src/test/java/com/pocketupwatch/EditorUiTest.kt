@@ -40,7 +40,7 @@ class EditorUiTest {
         val existing = ServiceEntry(id = 3, name = "Health", url = "https://example.com/health", intervalSeconds = 300)
         var saved: ServiceEntry? = null
         compose.setContent { MaterialTheme { ServiceEditor(existing, onCancel = {}, probe = Probe { ProbeResult(true, "HTTP 200") }, onSave = { saved = it }) } }
-        compose.onNodeWithTag("interval-slider").performScrollTo().performSemanticsAction(SemanticsActions.SetProgress) { it(5f) }
+        compose.onNodeWithTag("interval-slider").performScrollTo().performSemanticsAction(SemanticsActions.SetProgress) { it(9f) }
         compose.onNodeWithText("Check interval: 2hours").assertExists()
         compose.onNodeWithText("Save").performClick()
         compose.waitUntil(10_000) { saved != null }

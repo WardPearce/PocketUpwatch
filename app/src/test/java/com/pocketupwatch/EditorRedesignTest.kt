@@ -6,6 +6,7 @@ import android.view.View
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.material3.*
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.createComposeRule
 import java.io.File
 import org.junit.Assert.*
@@ -75,6 +76,20 @@ class EditorRedesignTest {
         compose.onNodeWithText("Save").assertIsDisplayed().performClick()
         compose.waitUntil(10_000) { saved != null }
         assertEquals(8, saved!!.timeoutSeconds)
+    }
+    @Test fun oneMinuteIntervalShowsBatteryWarningAndSaves() {
+        val existing = ServiceEntry(id = 3, name = "Production API", url = "https://example.com/health", intervalSeconds = 300)
+        var saved: ServiceEntry? = null
+        compose.setContent { screenshotView = LocalView.current; MaterialTheme { Surface { ServiceEditor(existing, onCancel = {}, probe = ok, onSave = { saved = it }) } } }
+        compose.onNodeWithTag("interval-battery-warning").assertDoesNotExist()
+        compose.onNodeWithTag("interval-slider").performScrollTo().performSemanticsAction(SemanticsActions.SetProgress) { it(0f) }
+        compose.onNodeWithText("Check interval: 1min").assertExists()
+        compose.onNodeWithTag("interval-battery-warning").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Save").assertIsEnabled()
+        saveScreenshot("one-minute-warning")
+        compose.onNodeWithText("Save").performClick()
+        compose.waitUntil(10_000) { saved != null }
+        assertEquals(60, saved!!.intervalSeconds)
     }
     private fun saveScreenshot(name: String) {
         compose.runOnIdle {

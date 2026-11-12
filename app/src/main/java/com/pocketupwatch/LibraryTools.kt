@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -60,11 +62,11 @@ import kotlinx.coroutines.withContext
         ChoiceMenu("Theme", mode, listOf("System", "Light", "Dark"), onMode)
         ChoiceMenu("Keep raw history", "$retention days", listOf("30 days", "90 days", "180 days", "365 days")) { retention = it.substringBefore(' ').toInt(); prefs.edit().putInt("retention_days", retention).apply() }
         Text("Old raw checks are cleaned up during monitoring. Hourly summaries are kept for one year. Incidents remain until their monitor is deleted.", style = MaterialTheme.typography.bodySmall)
-        TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }) { Text("Open battery and notification settings") }
+        AppSecondaryButton(onClick = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }, modifier = Modifier.fillMaxWidth()) { Text("Open battery and notification settings") }
         Text("Configuration backup", style = MaterialTheme.typography.titleLarge)
         Text("Without a passphrase, exports omit headers, request/expected bodies and URL query values. With a passphrase of at least 12 characters, the full configuration is encrypted. Imported monitors are always paused; review them before enabling.")
         TextField(passphrase, { passphrase = it }, Modifier.fillMaxWidth(), label = { Text("Backup passphrase (optional for export)") }, visualTransformation = PasswordVisualTransformation())
-        Button(enabled = !busy && (passphrase.isEmpty() || passphrase.length >= 12), onClick = {
+        AppButton(modifier = Modifier.fillMaxWidth(), enabled = !busy && (passphrase.isEmpty() || passphrase.length >= 12), onClick = {
             busy = true
             scope.launch {
                 val password = passphrase.toCharArray()
@@ -75,7 +77,7 @@ import kotlinx.coroutines.withContext
                 finally { password.fill('\u0000'); busy = false }
             }
         }) { Text("Export configuration") }
-        OutlinedButton(enabled = !busy, onClick = { import.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }) { Text("Import configuration") }
+        AppSecondaryButton(modifier = Modifier.fillMaxWidth(), enabled = !busy, onClick = { import.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }) { Text("Import configuration") }
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         message?.let { Text(it) }
         Text("Android shortcuts", style = MaterialTheme.typography.titleLarge)
@@ -84,12 +86,12 @@ import kotlinx.coroutines.withContext
     }
     preview?.let { monitors ->
         AlertDialog(onDismissRequest = { preview = null }, title = { Text("Import ${monitors.size} monitors?") }, text = { Text("These monitors will be added as paused copies. Existing monitors and history will be kept. Review redacted settings and credentials before enabling.") }, confirmButton = {
-            TextButton(onClick = { scope.launch {
+            AppSecondaryButton(onClick = { scope.launch {
                 try { vm.dao.importServices(monitors); message = "Imported ${monitors.size} paused monitors" }
                 catch (_: Exception) { message = "Could not import monitors" }
                 finally { preview = null }
             } }) { Text("Import paused copies") }
-        }, dismissButton = { TextButton(onClick = { preview = null }) { Text("Cancel") } })
+        }, dismissButton = { AppSecondaryButton(onClick = { preview = null }) { Text("Cancel") } })
     }
 }
 
@@ -109,9 +111,16 @@ import kotlinx.coroutines.withContext
             } catch (_: Exception) { message = "Could not export CSV" }
         }
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = { incidents = false; export.launch("PocketUpwatch-$id-checks.csv") }) { Text("Export checks") }
-        OutlinedButton(onClick = { incidents = true; export.launch("PocketUpwatch-$id-incidents.csv") }) { Text("Export incidents") }
+    var exportMenu by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxWidth()) {
+        AppSecondaryButton(onClick = { exportMenu = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("Export data", Modifier.weight(1f))
+            Icon(Icons.Default.ArrowDropDown, null)
+        }
+        DropdownMenu(expanded = exportMenu, onDismissRequest = { exportMenu = false }) {
+            DropdownMenuItem(text = { Text("Export checks as CSV") }, onClick = { exportMenu = false; incidents = false; export.launch("PocketUpwatch-$id-checks.csv") })
+            DropdownMenuItem(text = { Text("Export incidents as CSV") }, onClick = { exportMenu = false; incidents = true; export.launch("PocketUpwatch-$id-incidents.csv") })
+        }
     }
     message?.let { Text(it) }
 }
