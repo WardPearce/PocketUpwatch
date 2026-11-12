@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3
+
+- Use filled buttons with 8dp corners and consistent touch targets throughout the app, including the add/edit form.
+- Move check/edit actions near service status, align bulk and onboarding controls, label the add-monitor action, and group exports separately from deletion.
+- Repair history navigation with true page counts, stable snapshots, loading protection, scroll resets, and aligned equal-width Previous/Next buttons.
+- Allow 1-minute check intervals and show a battery-drain warning below 5 minutes.
+
 ## 0.1.2
 
 - Redesign the add/edit form with section cards, icons, setting summaries, collapsible advanced options, and a persistent Save/Cancel bar.

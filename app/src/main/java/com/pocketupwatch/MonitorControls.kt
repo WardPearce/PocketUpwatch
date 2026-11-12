@@ -32,7 +32,7 @@ internal fun formatInterval(seconds: Int): String {
 @Composable internal fun ProtocolPicker(protocol: String, enabled: Boolean = true, onChange: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        OutlinedButton(
+        AppSecondaryButton(
             onClick = { expanded = true },
             enabled = enabled,
             modifier = Modifier.heightIn(min = 56.dp).semantics { contentDescription = "Protocol" },
@@ -51,8 +51,8 @@ internal fun formatInterval(seconds: Int): String {
 
 @Composable internal fun IntervalSlider(seconds: Int, originalSeconds: Int?, enabled: Boolean = true, onChange: (Int) -> Unit) {
     val intervals = remember(originalSeconds) {
-        (listOf(300, 600, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400) +
-            listOfNotNull(originalSeconds?.takeIf { it in 300..86400 })).distinct().sorted()
+        (listOf(60, 120, 180, 240, 300, 600, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400) +
+            listOfNotNull(originalSeconds?.takeIf { it in 60..86400 })).distinct().sorted()
     }
     Column(Modifier.fillMaxWidth()) {
         Text("Check interval: ${formatInterval(seconds)}", style = MaterialTheme.typography.titleSmall)
@@ -71,11 +71,17 @@ internal fun formatInterval(seconds: Int): String {
             Text(formatInterval(intervals.first()), style = MaterialTheme.typography.bodySmall)
             Text(formatInterval(intervals.last()), style = MaterialTheme.typography.bodySmall)
         }
+        if (seconds < 300) Text(
+            "Checks more often than every 5 minutes may drain your battery faster than expected.",
+            modifier = Modifier.padding(top = 8.dp).testTag("interval-battery-warning"),
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall
+        )
     }
 }
 
-@Composable internal fun CheckNowButton(checking: Boolean, onClick: () -> Unit) {
-    Button(enabled = !checking, onClick = onClick) {
+@Composable internal fun CheckNowButton(checking: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    AppButton(enabled = !checking, modifier = modifier, onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (checking) CircularProgressIndicator(
                 modifier = Modifier.size(16.dp).testTag("check-progress"),

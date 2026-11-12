@@ -39,6 +39,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -138,7 +139,7 @@ class MainActivity : ComponentActivity() {
             Text(descriptions[step], style = MaterialTheme.typography.bodyLarge)
             if (granted) Text("Already allowed", color = MaterialTheme.colorScheme.primary)
             if (!granted) {
-                Button(onClick = {
+                AppButton(onClick = {
                     when (step) {
                         0 -> if (Build.VERSION.SDK_INT >= 33 && !notificationRequested && androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -148,14 +149,15 @@ class MainActivity : ComponentActivity() {
                     }
                 }, modifier = Modifier.fillMaxWidth()) { Text("Allow") }
             }
-            Button(onClick = advance, modifier = Modifier.fillMaxWidth()) { Text(if (step == 2) "Finish" else "Continue") }
             if (!granted) Text("You can continue without allowing this and change it later in settings.", style = MaterialTheme.typography.bodySmall)
-            if (step > 0) TextButton(onClick = { step-- }) { Text("Back") }
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (step > 0) AppSecondaryButton(onClick = { step-- }, modifier = Modifier.weight(1f).fillMaxHeight()) { Text("Back") }
+                AppButton(onClick = advance, modifier = Modifier.weight(1f).fillMaxHeight()) { Text(if (step == 2) "Finish" else "Continue") }
+            }
         }
     }
 }
-class MonitorViewModel(app: Application) : AndroidViewModel(app) {
-    val dao = MonitorDb.get(app).dao()
+class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: MonitorDao = MonitorDb.get(app).dao()) : AndroidViewModel(app) {
     val services = dao.services()
     val error = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
     fun save(service: ServiceEntry, onSaved: (Long) -> Unit = {}) = viewModelScope.launch {
@@ -223,10 +225,10 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
     }
     Scaffold(topBar = {
         TopAppBar(title = { Text(when { editor -> if (adding) "Add monitor" else "Edit monitor"; tools -> "Backup and settings"; selected != null -> selected.name; else -> "Pocket Upwatch" }) }, navigationIcon = {
-            if (editor || selected != null || tools) IconButton(onClick = { when { editor -> { adding = false; editingId = 0 }; tools -> tools = false; else -> selectedId = 0 } }) { Icon(Icons.Default.ArrowBack, "Back") }
-        }, actions = { if (!editor && selected == null && !tools) IconButton(onClick = { tools = true }) { Icon(Icons.Default.Settings, "Backup and settings") } })
+            if (editor || selected != null || tools) AppIconButton(modifier = Modifier.padding(start = 8.dp), onClick = { when { editor -> { adding = false; editingId = 0 }; tools -> tools = false; else -> selectedId = 0 } }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+        }, actions = { if (!editor && selected == null && !tools) AppIconButton(onClick = { tools = true }, modifier = Modifier.padding(end = 8.dp)) { Icon(Icons.Default.Settings, "Backup and settings") } })
     }, floatingActionButton = {
-        if (!editor && selected == null && !tools) FloatingActionButton(onClick = { adding = true }) { Icon(Icons.Default.Add, "Add monitor") }
+        if (!editor && selected == null && !tools) ExtendedFloatingActionButton(onClick = { adding = true }, shape = RoundedCornerShape(8.dp), icon = { Icon(Icons.Default.Add, null) }, text = { Text("Add monitor") })
     }) { padding ->
         when {
             editor -> ServiceEditor(editing, Modifier.padding(padding), onCancel = { adding = false; editingId = 0 }) { service -> vm.save(service) { id -> adding = false; editingId = 0; selectedId = id }.join() }
@@ -240,12 +242,12 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
                             Text(if (active) "${services.count { it.enabled }} enabled monitors" else "Monitoring stopped")
                             Text("Results reflect this device and network. Unknown gaps are excluded from success rates.", style = MaterialTheme.typography.bodySmall)
                             if (!androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) Text("Notifications are disabled. Enable them in app settings to receive alerts.", color = MaterialTheme.colorScheme.error)
-                            if (!CheckAlarm.canScheduleExact(context)) TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}"))) }) { Text("Allow timely alarms") }
+                            if (!CheckAlarm.canScheduleExact(context)) AppSecondaryButton(onClick = { context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}"))) }) { Text("Allow timely alarms") }
                             TextField(search, { search = it }, Modifier.fillMaxWidth(), label = { Text("Search names, targets, or tags") }, singleLine = true)
                             ChoiceMenu("Sort", sort, listOf("Newest", "Name", "Status", "Paused first", "Tag")) { sort = it }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(onClick = { vm.setAll(false) }, enabled = services.any { it.enabled }) { Text("Pause all") }
-                                OutlinedButton(onClick = { vm.setAll(true) }, enabled = services.any { !it.enabled }) { Text("Resume all") }
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                AppSecondaryButton(onClick = { vm.setAll(false) }, modifier = Modifier.weight(1f), enabled = services.any { it.enabled }) { Text("Pause all") }
+                                AppSecondaryButton(onClick = { vm.setAll(true) }, modifier = Modifier.weight(1f), enabled = services.any { !it.enabled }) { Text("Resume all") }
                             }
                         }
                     }
@@ -255,7 +257,7 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
-    if (error != null) AlertDialog(onDismissRequest = { vm.error.value = null }, title = { Text("Could not complete action") }, text = { Text(error!!) }, confirmButton = { TextButton(onClick = { vm.error.value = null }) { Text("OK") } })
+    if (error != null) AlertDialog(onDismissRequest = { vm.error.value = null }, title = { Text("Could not complete action") }, text = { Text(error!!) }, confirmButton = { AppSecondaryButton(onClick = { vm.error.value = null }) { Text("OK") } })
 }
 
 @Composable fun ServiceCard(service: ServiceEntry, vm: MonitorViewModel, onToggle: (Boolean) -> Unit, onClick: () -> Unit) {
@@ -282,8 +284,8 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
 
 @Composable fun ChoiceMenu(label: String, value: String, options: List<String>, onSelect: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    Box {
-        OutlinedButton(onClick = { expanded = true }) { Text("$label: $value"); Icon(Icons.Default.ArrowDropDown, null) }
+    Box(Modifier.fillMaxWidth()) {
+        AppSecondaryButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) { Text("$label: $value", Modifier.weight(1f)); Icon(Icons.Default.ArrowDropDown, null) }
         DropdownMenu(expanded, { expanded = false }) { options.forEach { option -> DropdownMenuItem(text = { Text(option) }, onClick = { onSelect(option); expanded = false }) } }
     }
 }
@@ -317,6 +319,27 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
             }
             latest?.let { Text(it.detail, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
+        DetailSection(Modifier.testTag("service-actions")) {
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                AppSecondaryButton(onClick = { onEdit(service) }, modifier = Modifier.weight(1f).fillMaxHeight()) { Text("Edit") }
+                CheckNowButton(checking = isChecking, modifier = Modifier.weight(1f).fillMaxHeight(), onClick = {
+                    checkError = null
+                    if (service.enabled) {
+                        try { MonitorService.start(context, service.id) }
+                        catch (_: Exception) { checkError = "Could not start the check. Try again." }
+                    } else {
+                        checking = true
+                        scope.launch {
+                            try { diagnostic = withContext(Dispatchers.IO) { ProbeEngine.runner(context).run(service) } }
+                            finally { checking = false }
+                        }
+                    }
+                })
+            }
+            checkError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (!service.enabled) Text("A manual test on a paused monitor does not record history or send alerts.", style = MaterialTheme.typography.bodySmall)
+            diagnostic?.let { Text("${if (it.up == null) "UNKNOWN" else if (it.up) "UP" else "DOWN"} · ${it.responseMs} ms · ${it.detail}") }
+        }
         DetailSection(Modifier.testTag("service-target")) {
             Text("Target", style = MaterialTheme.typography.titleMedium)
             SelectionContainer { Text(displayTarget(service.url), style = MaterialTheme.typography.bodyLarge) }
@@ -348,28 +371,7 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
             Text(latest?.let { formatTime(it.time) } ?: "No checks yet")
             Text("Android may delay scheduled checks.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        DetailSection(Modifier.testTag("service-actions")) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { onEdit(service) }) { Text("Edit") }
-                CheckNowButton(checking = isChecking, onClick = {
-                    checkError = null
-                    if (service.enabled) {
-                        try { MonitorService.start(context, service.id) }
-                        catch (_: Exception) { checkError = "Could not start the check. Try again." }
-                    } else {
-                        checking = true
-                        scope.launch {
-                            try { diagnostic = withContext(Dispatchers.IO) { ProbeEngine.runner(context).run(service) } }
-                            finally { checking = false }
-                        }
-                    }
-                })
-            }
-            checkError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            if (!service.enabled) Text("A manual test on a paused monitor does not record history or send alerts.", style = MaterialTheme.typography.bodySmall)
-            diagnostic?.let { Text("${if (it.up == null) "UNKNOWN" else if (it.up) "UP" else "DOWN"} · ${it.responseMs} ms · ${it.detail}") }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf(1 to "1h", 24 to "24h", 168 to "7d", 720 to "30d").forEach { (value, label) -> FilterChip(hours == value, { hours = value }, label = { Text(label) }) } }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(1 to "1h", 24 to "24h", 168 to "7d", 720 to "30d").forEach { (value, label) -> AppPeriodButton(label, hours == value, Modifier.weight(1f)) { hours = value } } }
         PeriodGraphs(service.id, hours, vm.dao, now) { graph -> context.startActivity(Intent(context, GraphActivity::class.java).putExtra("serviceId", service.id).putExtra("hours", hours).putExtra("graph", graph)) }
         DetailSection {
             Text("Incident history (latest 100)", style = MaterialTheme.typography.titleLarge)
@@ -385,28 +387,15 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
             Text("Past year: ${summaries.sumOf { it.upCount }} up · ${summaries.sumOf { it.downCount }} down · ${summaries.sumOf { it.skippedCount }} skipped samples")
             Text("Hourly counts remain after raw-history cleanup; they describe observed samples and do not fill unknown gaps.", style = MaterialTheme.typography.bodySmall)
         }
-        RecentChecks(service.id, vm.dao, latest?.id ?: 0)
-        CsvExportButtons(service.id, vm.dao)
-        OutlinedButton(onClick = { confirm = true }) { Text("Delete monitor") }
-    }
-    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("Delete ${service.name}?") }, text = { Text("Its checks, summaries and incidents will also be deleted.") }, confirmButton = { TextButton(onClick = { vm.delete(service, onDeleted) }) { Text("Delete") } }, dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } })
-}
-
-@Composable private fun RecentChecks(id: Long, dao: MonitorDao, latestId: Long) {
-    var page by rememberSaveable(id) { mutableIntStateOf(0) }
-    var checks by remember(id) { mutableStateOf(emptyList<CheckEntry>()) }
-    var sort by rememberSaveable(id) { mutableStateOf("Newest first") }
-    LaunchedEffect(id, page, latestId) { checks = dao.page(id, 0, 50, page * 50) }
-    val sorted = remember(checks, sort) { when (sort) { "Oldest first" -> checks.reversed(); "Fastest first" -> checks.sortedBy { it.responseMs }; "Slowest first" -> checks.sortedByDescending { it.responseMs }; "Down first" -> checks.sortedBy { if (it.skipped) 1 else if (it.up) 2 else 0 }; else -> checks } }
-    DetailSection {
-        Text("Recent checks", style = MaterialTheme.typography.titleLarge)
-        ChoiceMenu("Page sort", sort, listOf("Newest first", "Oldest first", "Fastest first", "Slowest first", "Down first")) { sort = it }
-        Column(Modifier.heightIn(max = 300.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            sorted.forEach { Text("${if (it.skipped) "UNKNOWN" else if (it.up) "UP" else "DOWN"} · ${it.responseMs} ms · ${it.detail}\n${formatTime(it.time)}"); HorizontalDivider() }
-            if (checks.isEmpty()) Text("No checks on this page")
+        RecentChecks(service.id, vm.dao)
+        DetailSection {
+            Text("Manage monitor", style = MaterialTheme.typography.titleLarge)
+            CsvExportButtons(service.id, vm.dao)
+            HorizontalDivider()
+            AppDangerButton(onClick = { confirm = true }, modifier = Modifier.fillMaxWidth()) { Text("Delete monitor") }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { TextButton(enabled = page > 0, onClick = { page-- }) { Text("Previous") }; Text("Page ${page + 1}"); TextButton(enabled = checks.size == 50, onClick = { page++ }) { Text("Next") } }
     }
+    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("Delete ${service.name}?") }, text = { Text("Its checks, summaries and incidents will also be deleted.") }, confirmButton = { AppDangerButton(onClick = { vm.delete(service, onDeleted) }) { Text("Delete") } }, dismissButton = { AppSecondaryButton(onClick = { confirm = false }) { Text("Cancel") } })
 }
 
 @Composable private fun PeriodGraphs(id: Long, hours: Int, dao: MonitorDao, now: Long, fullscreen: (String) -> Unit) {
@@ -416,7 +405,7 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
     val buckets by remember(id, since, hours) { dao.buckets(id, since, maxOf(60_000L, hours * 3_600_000L / 240)) }.collectAsStateWithLifecycle(initialValue = emptyList())
     val total = stats.upCount + stats.downCount
     DetailSection {
-        Row(verticalAlignment = Alignment.CenterVertically) { Text("Availability", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge); IconButton(onClick = { fullscreen("Availability") }) { Icon(Icons.Default.Fullscreen, "Fullscreen availability") } }
+        Row(verticalAlignment = Alignment.CenterVertically) { Text("Availability", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge); AppIconButton(onClick = { fullscreen("Availability") }) { Icon(Icons.Default.Fullscreen, "Fullscreen availability") } }
         Text(if (total == 0L) "No observed checks" else "${"%.1f".format(stats.upCount * 100.0 / total)}% of observed samples successful")
         Text("${stats.upCount} up · ${stats.downCount} down · ${stats.skippedCount} skipped. Missing checks are unknown.", style = MaterialTheme.typography.bodySmall)
         BucketAvailability(buckets, since, now, Modifier.fillMaxWidth().height(60.dp))
@@ -424,7 +413,7 @@ class MonitorViewModel(app: Application) : AndroidViewModel(app) {
         Text("${hours}h window · older raw checks may have been removed by your retention setting", style = MaterialTheme.typography.bodySmall)
     }
     DetailSection {
-        Row(verticalAlignment = Alignment.CenterVertically) { Text("Response time", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge); IconButton(onClick = { fullscreen("Response time") }) { Icon(Icons.Default.Fullscreen, "Fullscreen response time") } }
+        Row(verticalAlignment = Alignment.CenterVertically) { Text("Response time", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge); AppIconButton(onClick = { fullscreen("Response time") }) { Icon(Icons.Default.Fullscreen, "Fullscreen response time") } }
         ResponseChart(buckets.filter { it.upCount + it.downCount > 0 }.mapIndexed { index, b -> CheckEntry(index.toLong(), id, b.time, b.upCount > 0, b.responseMs, "") }, Modifier.fillMaxWidth().height(220.dp))
         Text("Mean probe duration per time bucket; concurrency queue time is excluded.", style = MaterialTheme.typography.bodySmall)
     }
@@ -460,7 +449,7 @@ class GraphActivity : ComponentActivity() {
             MaterialTheme(colorScheme = appColorScheme(mode)) {
                 Surface(Modifier.fillMaxSize()) {
                     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeContent).padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) { Text("$graph · ${hours}h", Modifier.weight(1f)); IconButton(onClick = { finish() }) { Icon(Icons.Default.Close, "Close fullscreen") } }
+                        Row(verticalAlignment = Alignment.CenterVertically) { Text("$graph · ${hours}h", Modifier.weight(1f)); AppIconButton(onClick = { finish() }) { Icon(Icons.Default.Close, "Close fullscreen") } }
                         if (graph == "Availability") BucketAvailability(buckets, since, now, Modifier.fillMaxWidth().weight(1f)) else ResponseChart(buckets.filter { it.upCount + it.downCount > 0 }.map { CheckEntry(serviceId = id, time = it.time, up = true, responseMs = it.responseMs, detail = "") }, Modifier.fillMaxWidth().weight(1f))
                     }
                 }

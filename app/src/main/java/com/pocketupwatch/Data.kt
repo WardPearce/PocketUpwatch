@@ -41,6 +41,11 @@ data class HourlyStats(val serviceId: Long, val hour: Long, val upCount: Long = 
 data class PeriodStats(val upCount: Long = 0, val downCount: Long = 0, val skippedCount: Long = 0)
 data class ChartBucket(val time: Long, val upCount: Long, val downCount: Long, val skippedCount: Long, val responseMs: Long)
 
+data class HistoryVersion(val total: Int = 0, val latestId: Long = 0)
+data class HistoryPage(val checks: List<CheckEntry>, val total: Int, val page: Int, val anchorId: Long) {
+    val pageCount: Int get() = maxOf(1, (total + 49) / 50)
+}
+
 @Dao interface MonitorDao {
     @Query("SELECT * FROM services ORDER BY id DESC") fun services(): Flow<List<ServiceEntry>>
     @Query("SELECT * FROM services") suspend fun allServices(): List<ServiceEntry>
@@ -53,6 +58,16 @@ data class ChartBucket(val time: Long, val upCount: Long, val downCount: Long, v
     @Query("SELECT * FROM checks WHERE serviceId = :id ORDER BY time DESC, id DESC LIMIT 1") suspend fun latest(id: Long): CheckEntry?
     @Query("SELECT * FROM checks WHERE serviceId = :id ORDER BY time, id") suspend fun exportHistory(id: Long): List<CheckEntry>
     @Query("SELECT * FROM checks WHERE serviceId = :id AND time >= :since ORDER BY time DESC, id DESC LIMIT :limit OFFSET :offset") suspend fun page(id: Long, since: Long, limit: Int = 50, offset: Int = 0): List<CheckEntry>
+    @Query("SELECT COUNT(*) AS total, COALESCE(MAX(id),0) AS latestId FROM checks WHERE serviceId = :id") fun historyVersion(id: Long): Flow<HistoryVersion>
+    @Query("SELECT COALESCE(MAX(id),0) FROM checks WHERE serviceId = :id") suspend fun historyAnchor(id: Long): Long
+    @Query("SELECT COUNT(*) FROM checks WHERE serviceId = :id AND id <= :anchorId") suspend fun historyCount(id: Long, anchorId: Long): Int
+    @Query("SELECT * FROM checks WHERE serviceId = :id AND id <= :anchorId ORDER BY time DESC, id DESC LIMIT 50 OFFSET :offset") suspend fun historyRows(id: Long, anchorId: Long, offset: Int): List<CheckEntry>
+    @Transaction suspend fun historyPage(id: Long, requestedPage: Int, anchorId: Long = 0): HistoryPage {
+        val anchor = if (anchorId == 0L) historyAnchor(id) else anchorId
+        val total = historyCount(id, anchor)
+        val page = requestedPage.coerceIn(0, ((total - 1).coerceAtLeast(0)) / 50)
+        return HistoryPage(historyRows(id, anchor, page * 50), total, page, anchor)
+    }
     @Query("SELECT COALESCE(SUM(CASE WHEN up = 1 AND skipped = 0 THEN 1 ELSE 0 END),0) AS upCount, COALESCE(SUM(CASE WHEN up = 0 AND skipped = 0 THEN 1 ELSE 0 END),0) AS downCount, COALESCE(SUM(skipped),0) AS skippedCount FROM checks WHERE serviceId = :id AND time >= :since") fun stats(id: Long, since: Long): Flow<PeriodStats>
     @Query("SELECT (time / :bucketMs) * :bucketMs AS time, SUM(CASE WHEN up = 1 AND skipped = 0 THEN 1 ELSE 0 END) AS upCount, SUM(CASE WHEN up = 0 AND skipped = 0 THEN 1 ELSE 0 END) AS downCount, SUM(skipped) AS skippedCount, CAST(AVG(CASE WHEN skipped = 0 THEN responseMs END) AS INTEGER) AS responseMs FROM checks WHERE serviceId = :id AND time >= :since GROUP BY time / :bucketMs ORDER BY time") fun buckets(id: Long, since: Long, bucketMs: Long): Flow<List<ChartBucket>>
     @Query("SELECT * FROM incidents WHERE serviceId = :id ORDER BY startedAt DESC LIMIT 100") fun incidents(id: Long): Flow<List<Incident>>

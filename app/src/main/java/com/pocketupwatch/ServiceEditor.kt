@@ -190,8 +190,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
                 if (message != null) Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                 else Text(if (name.isBlank() || target.isBlank()) "Add a name and target to enable Save." else "Your target is checked before saving.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
-                    Button(enabled = validation == null && !busy, modifier = Modifier.weight(2f), onClick = {
+                    AppSecondaryButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    AppButton(enabled = validation == null && !busy, modifier = Modifier.weight(2f), onClick = {
                         busy = true
                         actionError = null
                         scope.launch {
