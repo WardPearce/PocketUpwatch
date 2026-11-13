@@ -112,6 +112,11 @@ internal class ProbeEngine(
     }
     companion object {
         @Volatile private var shared: ProbeRunner? = null
-        fun runner(context: Context): ProbeRunner = shared ?: synchronized(this) { shared ?: ProbeRunner(ProbeEngine(SecretStore()::decrypt, context.applicationContext)).also { shared = it } }
+        fun runner(context: Context): ProbeRunner = shared ?: synchronized(this) {
+            val app = context.applicationContext
+            shared ?: ProbeRunner(ConnectivityCheckedProbe(ProbeEngine(SecretStore()::decrypt, app)) { service ->
+                AndroidConnectionObservation(app.getSystemService(android.net.ConnectivityManager::class.java), service.requireValidatedInternet)
+            }).also { shared = it }
+        }
     }
 }

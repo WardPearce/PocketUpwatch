@@ -36,7 +36,7 @@ Monitoring uses a foreground service and ongoing notification. A single due-time
 
 Unrestricted battery use may improve background reliability but increase power use. Allow alarms and reminders for more timely wake-ups; otherwise inexact alarms are used. Android can throttle or defer alarms, especially during Doze, so intervals are not guaranteed. The special-use foreground service requires the appropriate Google Play declaration and review before distribution.
 
-No active network produces an unknown skipped result. **Require Internet** is enabled by default for new monitors to skip checks during captive portals or unvalidated connectivity; turn it off for LAN targets without internet access. Network changes during failed probes can also produce unknown results. This cannot distinguish every local-network fault from a remote outage. Results reflect this phone and network, rather than independent public availability. Maintenance windows record unknown skips and suspend endpoint alerts. Save-time checks bypass scheduling and maintenance and do not record history or send alerts. Manual tests of paused monitors also leave history unchanged.
+No active network produces an unknown skipped result. **Require Internet** is enabled by default for new monitors to skip checks during captive portals or unvalidated connectivity; turn it off for LAN targets without internet access. Background, manual, and save-time checks share the same Internet requirement. Losing Internet validation during a check, switching default networks (such as Wi-Fi to mobile data), or a detected disconnect/reconnect makes a failed probe an unknown skip rather than a service failure. These skips do not count toward downtime or trigger down alerts. This cannot distinguish every local-network fault from a remote outage. Results reflect this phone and network, rather than independent public availability. Maintenance windows record unknown skips and suspend endpoint alerts. Save-time checks bypass scheduling and maintenance and do not record history or send alerts. Manual tests of paused monitors also leave history unchanged.
 
 Add the Pocket Upwatch home-screen widget through your launcher, or add its Quick Settings tile to pause/resume all monitors. The widget displays a timestamped snapshot; opening the app refreshes live state. Process-local service status is considered stopped after process death until the service starts again.
 
@@ -60,7 +60,7 @@ Pull requests run tests, Android lint, and the debug build without signing secre
 
 ## Android releases
 
-Version 0.1.7 uses version code 13. Before the next release, update `versionName` and increase `versionCode` in `app/build.gradle.kts`. Every push to `main` validates the project, then builds a signed APK. If `v<versionName>` does not exist, the workflow creates a tag and GitHub release. Existing version tags skip publication.
+Version 0.1.8 uses version code 14. Before the next release, update `versionName` and increase `versionCode` in `app/build.gradle.kts`. Every push to `main` validates the project, then builds a signed APK. If `v<versionName>` does not exist, the workflow creates a tag and GitHub release. Existing version tags skip publication.
 
 Configure repository Actions secrets:
 
