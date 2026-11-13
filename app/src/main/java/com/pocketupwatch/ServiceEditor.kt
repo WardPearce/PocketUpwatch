@@ -132,7 +132,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
             EditorSection("Monitoring", "Choose when checks run and which network they use.", Icons.Outlined.Schedule) {
                 IntervalSlider(interval, existing?.intervalSeconds, enabled = !busy) { interval = it }
                 HorizontalDivider()
-                EditorToggle("Require Internet", "Only check when Android confirms Internet access. Turn off for services on your local network.", validated, !busy) { validated = it }
+                EditorToggle("Require Internet", "Only count failures while Android confirms Internet access over Wi-Fi, mobile data, or another network. Offline checks are skipped. Turn off for local services.", validated, !busy) { validated = it }
             }
             EditorSection("Request settings", if (http) "$method · ${timeout}s timeout" else "${timeout}s timeout", Icons.Outlined.Tune, collapsible = true, enabled = !busy) {
                 if (http) EditorDropdown("HTTP method", method, listOf("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"), !busy) { method = it; if (it == "HEAD") bodyType = "None" }

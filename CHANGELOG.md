@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.8
+
+- Apply Require Internet to background, manual, and save-time checks through one shared connectivity guard.
+- Skip failures when Internet validation is lost or the default network changes/disconnects during a probe; preserve LAN checks with Require Internet off.
+
 ## 0.1.7
 
 - Restore the five-minute minimum for monitoring intervals and upgrade existing shorter intervals.

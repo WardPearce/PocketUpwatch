@@ -17,6 +17,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 internal object ConnectivityPolicy {
     fun skipReason(service: ServiceEntry, connected: Boolean, validated: Boolean, now: Long): String? = when {
         service.maintenanceUntil > now -> "Maintenance window"
+        else -> internetSkipReason(service, connected, validated)
+    }
+    fun internetSkipReason(service: ServiceEntry, connected: Boolean, validated: Boolean): String? = when {
         !connected -> "No network connection"
         service.requireValidatedInternet && !validated -> "Internet connection is not validated"
         else -> null
@@ -169,9 +172,7 @@ class MonitorService : Service() {
         val dao = MonitorDb.get(this).dao()
         val before = connectivity()
         val skip = ConnectivityPolicy.skipReason(service, before.first, before.second, System.currentTimeMillis())
-        var result = if (skip != null) ProbeResult(null, skip) else withContext(Dispatchers.IO) { ProbeEngine.runner(this@MonitorService).run(service) }
-        val after = connectivity()
-        if (skip == null && (!after.first || before != after && result.up == false)) result = ProbeResult(null, "Network changed during check")
+        val result = if (skip != null) ProbeResult(null, skip) else withContext(Dispatchers.IO) { ProbeEngine.runner(this@MonitorService).run(service) }
         currentCoroutineContext().ensureActive()
         val event = dao.recordIfUnchanged(service, CheckEntry(serviceId = service.id, time = System.currentTimeMillis(), up = result.up == true, responseMs = result.responseMs, detail = result.detail, skipped = result.up == null))
         BackgroundDiagnostics.mark(this, "last_result")
