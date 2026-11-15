@@ -6,7 +6,7 @@ An Android uptime monitor built with Kotlin, Compose, and Room. Monitor HTTP(S),
 
 The add/edit form groups service details and monitoring essentials into cards. Expand request, response, authentication, alerts, or organization sections only when needed; closed sections summarize their current settings. Save and Cancel stay visible at the bottom, and existing settings are preserved when editing.
 
-Enter or paste a full URL to select its protocol automatically: `https://example.com` selects HTTPS and leaves `example.com` in the target field. HTTP works the same way; ports, paths, and query strings are preserved.
+Enter or paste a full URL to select its protocol automatically: `https://example.com` selects HTTPS and leaves `example.com` in the address field. HTTP works the same way; ports, paths, and query strings are preserved.
 
 Add a target, choose a check interval from 5 minutes to 24 hours with the interval slider, and save it. Save checks the target first; a failed or unknown check keeps the editor open, shows an error, and offers **Save paused**. This saves a valid configuration without another probe, history, or alerts so you can enable it when the target is ready. Invalid configurations cannot be saved. Existing intervals below 5 minutes are raised to 5 minutes when the database opens. Monitors begin checking after a successful save; each can be paused independently.
 
@@ -46,11 +46,30 @@ No active network produces an unknown skipped result. **Require Internet** is en
 
 Add the Pocket Upwatch home-screen widget through your launcher, or add its Quick Settings tile to pause/resume all monitors. The widget displays a timestamped snapshot; opening the app refreshes live state. Process-local service status is considered stopped after process death until the service starts again.
 
+## Settings
+
+Settings is organized into Monitoring, Notifications, Appearance and dashboard, Data and storage, Backup and restore, and Help and about. Current-value summaries make common choices visible without opening each page. Diagnostics refresh while visible and after returning from Android settings; errors followed by a saved result are labeled resolved. Review and save a support report containing app/Android versions, permission and notification-channel states, scheduler timestamps, and error categories. Reports omit monitor addresses and credentials.
+
+Set defaults for new monitors: check interval, timeout, Internet requirement, and failure/recovery thresholds. Existing monitors retain their settings. Choose a persistent default sort and chart period, comfortable or compact list spacing, and relative or date/time check timestamps.
+
+Notifications shows the effective state of service alerts, monitoring status, and backup reminders, with direct links to their Android channel settings and a Test alert action. Snooze service alerts for 1, 4, or 24 hours, or configure daily quiet hours in your device's time zone. Checks and incident recording continue while alerts are muted. Deferred outages alert on their next failed check after alerts resume; an outage that starts and recovers entirely while muted does not generate a later recovery alert. Android permissions and channel settings still determine delivery.
+
+Data and storage shows retained check, incident, and hourly-summary counts, oldest check, database file usage, and last cleanup. Preview and confirm manual cleanup even while all monitors are paused. Cleanup retains each monitor's latest result and all incidents, and removes hourly summaries older than a year. Deleted rows may not immediately reduce database file size.
+
+Help and about includes permission setup, widget and Quick Settings instructions, release notes, project/issue links, and selectable version/build details.
+
 ## Backup and restore
 
-Use **Backup and settings** to export or import versioned JSON through Android's file picker. Without a passphrase, exports omit headers and request/expected bodies and redact URL query values. These exports need review before use. A passphrase of at least 12 characters creates a full portable backup encrypted with PBKDF2-HMAC-SHA256 (210,000 iterations) and AES-256-GCM. Remember the passphrase; it cannot be recovered. Device-specific Keystore ciphertext is never exported as a portable credential.
+Open **Settings → Backup and restore** and choose an explicit export mode:
 
-Import shows a confirmation and adds paused copies without replacing existing monitors or importing history. Review credentials and redacted fields before enabling them. Imports are bounded in size and monitor count, validated, and committed transactionally. Android automatic backup is disabled.
+- **Create encrypted backup** includes monitors and credentials, with an optional copy of portable app preferences. Confirm a password of at least 12 characters. Backups use PBKDF2-HMAC-SHA256 (210,000 iterations) and AES-256-GCM; passwords cannot be recovered.
+- **Export redacted template** omits headers and request/expected bodies and redacts URL query values. Names, hosts and paths remain visible, so review the file before sharing.
+
+Import chooses a file first and asks for a password only for encrypted files. Review monitor names and redacted addresses, select rows, and inspect similar-address warnings before importing. Similar addresses, including repeated entries within a file, start unselected; this is a heuristic that ignores query values, and you can select them explicitly. Optionally restore included app preferences. Imported monitors start paused, and templates remain blocked from starting until you review them in the editor. Bulk resume also respects that requirement. Existing monitors and history are kept. Imports are bounded, validated, and committed transactionally with repeat-submit protection.
+
+Prepared files and import previews survive activity recreation in memory. If Android kills the process during export, the app explains the interruption and asks you to try again; passwords are never saved in instance state. Last-backup time updates only after an encrypted backup is successfully written. Optional reminders every 7, 30, or 90 days work independently of monitor activity, use inexact Android alarms, and respect muted periods and notification permissions. Reminders prompt you to create a backup; they do not retain passwords or automatically export files.
+
+Encrypted backups with preferences use payload version 2; version 1 monitor-only files remain supported. History, widget IDs, Android permission grants, snooze state, and last-backup timestamps remain local. Device-specific Keystore ciphertext is never exported as a portable credential. Android automatic backup is disabled.
 
 ## Development and tests
 
@@ -60,13 +79,13 @@ Open with Android Studio, SDK 35, and JDK 17. Alternatively set `ANDROID_HOME` t
 ./gradlew testDebugUnitTest lintDebug assembleDebug
 ```
 
-The debug APK is `app/build/outputs/apk/debug/app-debug.apk`. Unit tests cover JSON/XML matching, paths, alert thresholds, unknown state, scheduling, timing under concurrency, HTTP behavior against MockWebServer, backups, CSV safety, period queries, and migration chains from database versions 1, 2, and 3. Robolectric tests exercise Room, the editor, and idle-service shutdown. Tests download Robolectric's Android runtime from Maven Central. Native Robolectric rendering also produces light/dark editor previews under `app/build/outputs/editor-preview`; CI includes them in the validation artifact. Exported Room schemas are committed under `app/schemas`.
+The debug APK is `app/build/outputs/apk/debug/app-debug.apk`. Unit tests cover JSON/XML matching, paths, alert thresholds, unknown state, scheduling, timing under concurrency, HTTP behavior against MockWebServer, backups, CSV safety, period queries, and migration chains from database versions 1 through 4. Robolectric tests exercise Room, the editor, settings navigation, backup/import state and file errors, defaults, quiet hours, cleanup, and idle-service shutdown. Tests download Robolectric's Android runtime from Maven Central. Native Robolectric rendering also produces light/dark editor, dashboard, and settings previews under `app/build/outputs/editor-preview`; CI includes them in the validation artifact. Exported Room schemas are committed under `app/schemas`.
 
 Pull requests run tests, Android lint, and the debug build without signing secrets. The release workflow calls the same checks before building a signed APK. Physical-device validation of Doze, reboot, OEM battery restrictions, widgets, and Quick Settings is still recommended before distribution.
 
 ## Android releases
 
-Version 0.1.9 uses version code 15. Before the next release, update `versionName` and increase `versionCode` in `app/build.gradle.kts`. Every push to `main` validates the project, then builds a signed APK. If `v<versionName>` does not exist, the workflow creates a tag and GitHub release. Existing version tags skip publication.
+Version 0.1.10 uses version code 16. Before the next release, update `versionName` and increase `versionCode` in `app/build.gradle.kts`. Every push to `main` validates the project, then builds a signed APK. If `v<versionName>` does not exist, the workflow creates a tag and GitHub release. Existing version tags skip publication.
 
 Configure repository Actions secrets:
 

@@ -31,7 +31,7 @@ class BackupCodecTest {
         assertThrows(Exception::class.java) { BackupCodec.decode(tampered, password) { "" } }
     }
     @Test fun invalidAndFutureBackupsAreRejectedWithoutImport() {
-        assertThrows(Exception::class.java) { BackupCodec.decode("{\"version\":2,\"monitors\":[]}", charArrayOf()) { "" } }
+        assertThrows(Exception::class.java) { BackupCodec.decode("{\"version\":99,\"monitors\":[]}", charArrayOf()) { "" } }
         assertThrows(Exception::class.java) { BackupCodec.decode("{\"version\":1,\"monitors\":[{}]}", charArrayOf()) { "" } }
         assertThrows(Exception::class.java) { BackupCodec.encode(listOf(service), "short".toCharArray()) { emptyMap() } }
     }

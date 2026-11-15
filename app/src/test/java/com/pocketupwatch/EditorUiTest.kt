@@ -78,7 +78,7 @@ class EditorUiTest {
         var saved: ServiceEntry? = null
         compose.setContent { MaterialTheme { ServiceEditor(existing, onCancel = {}, probe = Probe { ProbeResult(true, "HTTP 200") }, onSave = { saved = it }) } }
         compose.onNodeWithTag("interval-slider").performScrollTo().performSemanticsAction(SemanticsActions.SetProgress) { it(5f) }
-        compose.onNodeWithText("Check interval: 2hours").assertExists()
+        compose.onNodeWithText("Check interval: 2 hours").assertExists()
         compose.onNodeWithText("Save").performClick()
         compose.waitUntil(10_000) { saved != null }
         assertEquals(7200, saved!!.intervalSeconds)
@@ -88,10 +88,10 @@ class EditorUiTest {
         var saved: ServiceEntry? = null
         compose.setContent { MaterialTheme { ServiceEditor(existing, onCancel = {}, probe = Probe { ProbeResult(true, "HTTP 200") }, onSave = { saved = it }) } }
         val protocol = compose.onNodeWithContentDescription("Protocol").fetchSemanticsNode().boundsInRoot
-        val host = compose.onNodeWithText("Host, path and query").fetchSemanticsNode().boundsInRoot
+        val host = compose.onNodeWithText("Address").fetchSemanticsNode().boundsInRoot
         assertTrue(protocol.right <= host.left)
         assertTrue(abs(protocol.center.y - host.center.y) < 4f)
-        compose.onNodeWithText("Check interval: 12min 30sec").assertExists()
+        compose.onNodeWithText("Check interval: 12 min 30 sec").assertExists()
         compose.onNodeWithText("Save").performClick()
         compose.waitUntil(10_000) { saved != null }
         assertEquals(750, saved!!.intervalSeconds)
@@ -104,7 +104,7 @@ class EditorUiTest {
         val probe = Probe { service -> started.complete(service); result.await() }
         compose.setContent { MaterialTheme { ServiceEditor(null, onCancel = {}, probe = probe, onSave = { saved = it }) } }
         compose.onNodeWithText("Name").performScrollTo().performTextInput("Health")
-        compose.onNodeWithText("Host, path and query").performScrollTo().performTextInput("example.com/health")
+        compose.onNodeWithText("Address").performScrollTo().performTextInput("example.com/health")
         compose.onNodeWithText("Test before saving").assertDoesNotExist()
         compose.onNodeWithText("Save").performClick()
         compose.waitUntil(10_000) { started.isCompleted }
@@ -145,7 +145,7 @@ class EditorUiTest {
         val existing = ServiceEntry(id = 7, name = "Health", url = "https://example.com", intervalSeconds = 300)
         compose.setContent { MaterialTheme { ServiceEditor(existing, onCancel = {}, probe = Probe { throw java.io.IOException("test") }, onSave = { fail("Must not save") }) } }
         compose.onNodeWithText("Save").performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Could not test the monitor. Please try again.").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Couldn't check the connection. Try again.").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Save").assertIsEnabled()
     }
 
@@ -153,7 +153,7 @@ class EditorUiTest {
         val existing = ServiceEntry(id = 8, name = "Health", url = "https://example.com", intervalSeconds = 300)
         compose.setContent { MaterialTheme { ServiceEditor(existing, onCancel = {}, probe = Probe { ProbeResult(true, "HTTP 200") }, onSave = { throw java.io.IOException("test") }) } }
         compose.onNodeWithText("Save").performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Could not save the monitor. Please try again.").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Couldn't save this monitor. Try again.").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Save").assertIsEnabled()
     }
 

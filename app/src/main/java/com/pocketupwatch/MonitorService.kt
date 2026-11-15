@@ -61,9 +61,7 @@ class MonitorService : Service() {
     }
     override fun onCreate() {
         super.onCreate()
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel("monitor", "Monitoring", NotificationManager.IMPORTANCE_LOW))
-        manager.createNotificationChannel(NotificationChannel("alerts", "Service alerts", NotificationManager.IMPORTANCE_HIGH))
+        AppNotifications.channels(this)
         val notification = notification("Starting monitoring")
         if (Build.VERSION.SDK_INT >= 34) startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE) else startForeground(1, notification)
         active.value = true
@@ -90,7 +88,7 @@ class MonitorService : Service() {
             try {
                 withBackgroundWakeLock(this, "scheduler", 90_000) {
                     val dao = MonitorDb.get(this).dao()
-                    val enabled = dao.allServices().filter { it.enabled }
+                    val enabled = dao.allServices().filter { it.enabled && !it.needsReview }
                     val ids = enabled.map { it.id }.toSet()
                     (configs.keys - ids).forEach { id -> running.remove(id)?.cancelAndJoin(); configs.remove(id); deadlines.remove(id) }
                     checksInProgress.value = checksInProgress.value.intersect(ids)
@@ -128,7 +126,7 @@ class MonitorService : Service() {
                                         catch (e: CancellationException) { throw e }
                                         catch (e: Exception) {
                                             BackgroundDiagnostics.failure(this@MonitorService, "Check persistence", e)
-                                            publish(1, notification("Could not store a check · retrying next interval"))
+                                            publish(1, notification("Couldn't save a check · trying again next time"))
                                         } finally {
                                             checksInProgress.value -= service.id
                                             if (configs[service.id] == service) deadlines[service.id] = SystemClock.elapsedRealtime() + service.intervalSeconds.coerceAtLeast(300) * 1_000L
@@ -151,6 +149,7 @@ class MonitorService : Service() {
                         val retention = getSharedPreferences("settings", MODE_PRIVATE).getInt("retention_days", 90).coerceIn(7, 365)
                         dao.pruneChecks(wall - retention * 86_400_000L)
                         dao.pruneHours(wall - 365 * 86_400_000L)
+                        AppSettings.prefs(this).edit().putLong("last_cleanup", wall).apply()
                     }
                     BackgroundDiagnostics.mark(this, "last_cycle")
                 }
@@ -174,10 +173,13 @@ class MonitorService : Service() {
         val skip = ConnectivityPolicy.skipReason(service, before.first, before.second, System.currentTimeMillis())
         val result = if (skip != null) ProbeResult(null, skip) else withContext(Dispatchers.IO) { ProbeEngine.runner(this@MonitorService).run(service) }
         currentCoroutineContext().ensureActive()
-        val event = dao.recordIfUnchanged(service, CheckEntry(serviceId = service.id, time = System.currentTimeMillis(), up = result.up == true, responseMs = result.responseMs, detail = result.detail, skipped = result.up == null))
+        val saved = dao.recordResultIfUnchanged(service, CheckEntry(serviceId = service.id, time = System.currentTimeMillis(), up = result.up == true, responseMs = result.responseMs, detail = result.detail, skipped = result.up == null)) ?: return
         BackgroundDiagnostics.mark(this, "last_result")
-        if (event != null && androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled()) {
-            val alert = NotificationCompat.Builder(this, "alerts").setSmallIcon(android.R.drawable.stat_notify_error).setContentTitle("${service.name} $event").setContentText(result.detail).setContentIntent(openIntent(service.id)).setAutoCancel(true).build()
+        val current = dao.getService(service.id)
+        val notificationEvent = if (current == service && service.enabled && !service.needsReview) AlertSilence.event(AppSettings.prefs(this), service.id, saved.notification,
+            saved.confirmed, result.up == null, System.currentTimeMillis(), result.up == true) else null
+        if (notificationEvent != null && AppNotifications.allowed(this, "alerts")) {
+            val alert = NotificationCompat.Builder(this, "alerts").setSmallIcon(android.R.drawable.stat_notify_error).setContentTitle("${service.name} $notificationEvent").setContentText(result.detail).setContentIntent(openIntent(service.id)).setAutoCancel(true).build()
             publish((service.id % (Int.MAX_VALUE - 2)).toInt() + 2, alert)
         }
         MonitoringWidget.updateAll(this, service.id)

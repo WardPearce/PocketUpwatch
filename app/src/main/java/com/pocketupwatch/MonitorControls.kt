@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -25,25 +26,21 @@ internal fun formatInterval(seconds: Int): String {
     val minutes = total % 3600 / 60
     val remainingSeconds = total % 60
     return listOfNotNull(
-        hours.takeIf { it > 0 }?.let { "$it${if (it == 1) "hour" else "hours"}" },
-        minutes.takeIf { it > 0 }?.let { "${it}min" },
-        remainingSeconds.takeIf { it > 0 }?.let { "${it}sec" }
-    ).joinToString(" ").ifEmpty { "0sec" }
+        hours.takeIf { it > 0 }?.let { "$it ${if (it == 1) "hour" else "hours"}" },
+        minutes.takeIf { it > 0 }?.let { "$it min" },
+        remainingSeconds.takeIf { it > 0 }?.let { "$it sec" }
+    ).joinToString(" ").ifEmpty { "0 sec" }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun ProtocolPicker(protocol: String, enabled: Boolean = true, onChange: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    Box {
-        AppSecondaryButton(
-            onClick = { expanded = true },
-            enabled = enabled,
-            modifier = Modifier.heightIn(min = 56.dp).semantics { contentDescription = "Protocol" },
-            contentPadding = PaddingValues(horizontal = 12.dp)
-        ) {
-            Text(protocol.uppercase())
-            Icon(Icons.Default.ArrowDropDown, contentDescription = null)
-        }
-        DropdownMenu(expanded, { expanded = false }) {
+    val width = 112.dp + 60.dp * (LocalDensity.current.fontScale - 1f).coerceAtLeast(0f)
+    ExposedDropdownMenuBox(expanded && enabled, onExpandedChange = { if (enabled) expanded = !expanded }, modifier = Modifier.width(width)) {
+        OutlinedTextField(protocol.uppercase(), {}, readOnly = true, enabled = enabled, singleLine = true,
+            label = { Text("Protocol") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled).heightIn(min = 64.dp).semantics { contentDescription = "Protocol" })
+        ExposedDropdownMenu(expanded && enabled, { expanded = false }) {
             listOf("https", "http", "tcp", "ping", "dns", "tls").forEach { choice ->
                 DropdownMenuItem(text = { Text(choice.uppercase()) }, onClick = { onChange(choice); expanded = false })
             }

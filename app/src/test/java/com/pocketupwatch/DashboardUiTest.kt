@@ -61,7 +61,7 @@ class DashboardUiTest {
             view = LocalView.current
             MaterialTheme(colorScheme = scheme(dark)) {
                 Scaffold(topBar = { AppTopBar("Pocket Upwatch", actions = {
-                    AppIconButton(onClick = {}, modifier = Modifier.padding(end = 8.dp)) { Icon(Icons.Default.Settings, "Backup and settings") }
+                    AppIconButton(onClick = {}, modifier = Modifier.padding(end = 8.dp)) { Icon(Icons.Default.Settings, "Settings") }
                 }) }, floatingActionButton = {
                     ExtendedFloatingActionButton(onClick = {}, shape = RoundedCornerShape(8.dp), icon = { Icon(Icons.Default.Add, null) }, text = { Text("Add monitor") })
                 }) { padding ->
@@ -83,7 +83,7 @@ class DashboardUiTest {
         compose.onNodeWithTag("monitor-2").assertDoesNotExist()
         screenshot("improved-dashboard-filtered")
         compose.onNodeWithText("home", substring = false).performClick()
-        compose.onNodeWithText("No matching monitors. Try another filter or clear your search.").assertExists()
+        compose.onNodeWithText("No monitors match. Try clearing your filters.").assertExists()
         compose.onNodeWithText("Clear filters").performClick()
         compose.onNodeWithText("Search monitors").performTextInput("Payments")
         compose.onNodeWithTag("monitor-2").assertExists()
@@ -103,7 +103,7 @@ class DashboardUiTest {
     @Test fun diagnosticsBannerNavigatesAndBulkActionsExplicitlyAffectAllMonitors() {
         var diagnostics = false
         var all: Boolean? = null
-        dashboard(health = BackgroundHealth("Checks are delayed", "Some monitors have missed their expected checks. Android may be delaying background work.", now - 1_500_000),
+        dashboard(health = BackgroundHealth("Checks are delayed", "Some checks are overdue. Android may be delaying them.", now - 1_500_000),
             onDiagnostics = { diagnostics = true }, onSetAll = { all = it })
         compose.onNodeWithText("View diagnostics").performClick()
         assertTrue(diagnostics)
@@ -203,7 +203,7 @@ class DashboardUiTest {
         compose.waitUntil(10_000) { saveStarted.isCompleted }
         compose.onNodeWithText("Save paused").assertIsNotEnabled()
         releaseSave.complete(Unit)
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Could not save the monitor. Please try again.").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Couldn't save this monitor. Try again.").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Save paused").assertIsEnabled()
         assertEquals(1, saves)
     }
@@ -256,6 +256,7 @@ class DashboardUiTest {
             compose.runOnIdle { MonitorService.active.value = false }
             compose.onNodeWithText("View diagnostics").performClick()
             compose.onNodeWithText("Background monitoring").assertExists()
+            compose.onNodeWithText("Show diagnostics").performScrollTo().performClick()
             compose.onNodeWithText("Refresh diagnostics").assertExists()
             compose.onNodeWithTag("app-back").performClick()
             compose.onNodeWithTag("filter-DOWN").assertIsSelected()

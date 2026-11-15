@@ -82,7 +82,7 @@ class MonitorDatabaseTest {
             sql.execSQL("INSERT INTO checks VALUES (1,1,1000,1,42,'HTTP 200')")
             sql.version = 3
         }
-        val migrated = Room.databaseBuilder(context, MonitorDb::class.java, name).addMigrations(MonitorDb.MIGRATION_3_4).allowMainThreadQueries().build()
+        val migrated = Room.databaseBuilder(context, MonitorDb::class.java, name).addMigrations(MonitorDb.MIGRATION_3_4, MonitorDb.MIGRATION_4_5).allowMainThreadQueries().build()
         try {
             assertEquals("Existing", migrated.dao().getService(1)!!.name)
             assertEquals(2, migrated.dao().getService(1)!!.failureThreshold)
@@ -110,7 +110,7 @@ class MonitorDatabaseTest {
                 }
                 sql.version = version
             }
-            val migrated = Room.databaseBuilder(context, MonitorDb::class.java, name).addMigrations(MonitorDb.MIGRATION_1_2, MonitorDb.MIGRATION_2_3, MonitorDb.MIGRATION_3_4).allowMainThreadQueries().build()
+            val migrated = Room.databaseBuilder(context, MonitorDb::class.java, name).addMigrations(MonitorDb.MIGRATION_1_2, MonitorDb.MIGRATION_2_3, MonitorDb.MIGRATION_3_4, MonitorDb.MIGRATION_4_5).allowMainThreadQueries().build()
             try {
                 val service = migrated.dao().getService(1)!!
                 assertEquals(300, service.intervalSeconds)

@@ -61,7 +61,7 @@ import java.util.Date
         ChoiceMenu("Page sort", sort, listOf("Newest first", "Oldest first", "Fastest first", "Slowest first", "Down first")) { sort = it }
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth().testTag("history-loading"))
         if (error) {
-            Text("Could not load history. Please try again.", color = MaterialTheme.colorScheme.error)
+            Text("Couldn't load history. Try again.", color = MaterialTheme.colorScheme.error)
             AppSecondaryButton(onClick = { retry++ }) { Text("Retry history") }
         }
         Column(Modifier.fillMaxWidth().heightIn(max = 300.dp).verticalScroll(historyScroll), verticalArrangement = Arrangement.spacedBy(12.dp)) {

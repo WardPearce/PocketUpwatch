@@ -134,7 +134,7 @@ class ServiceWidgetTest {
     @Test fun unconfiguredWidgetOffersSetupAndRejectsMissingServices() = runBlocking {
         bind(101)
         ServiceWidget.update(context, manager, intArrayOf(101), dao)
-        assertEquals("Choose a service", text(widgets.getViewFor(101), R.id.service_widget_title))
+        assertEquals("Choose a monitor", text(widgets.getViewFor(101), R.id.service_widget_title))
         val id = service()
         ServiceWidget.configure(context, manager, 101, id, dao)
         assertTrue(runCatching { ServiceWidget.configure(context, manager, 101, id + 100, dao) }.isFailure)

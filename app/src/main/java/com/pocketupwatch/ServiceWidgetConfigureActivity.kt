@@ -58,7 +58,7 @@ class ServiceWidgetConfigureActivity : ComponentActivity() {
                                 finish()
                             } catch (e: CancellationException) { throw e }
                             catch (_: Exception) {
-                                error = "Could not save the widget. Check that the service still exists and try again."
+                                error = "Couldn't save this widget. The monitor may have been removed."
                             } finally { busy = false }
                         }
                     })
@@ -87,11 +87,11 @@ class ServiceWidgetConfigureActivity : ComponentActivity() {
             }
         }) { padding ->
         LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item { Text("Choose a service to show its status, uptime, and availability graph for the last 24 hours. Each widget can track a different service.") }
+            item { Text("Choose a monitor to show its status, uptime, and availability graph for the last 24 hours. Each widget can track a different service.") }
             if (services == null) item { CircularProgressIndicator() }
             else if (services.isEmpty()) item {
                 DetailSection {
-                    Text("No services yet", style = MaterialTheme.typography.titleMedium)
+                    Text("No monitors yet", style = MaterialTheme.typography.titleMedium)
                     Text("Add a service in Pocket Upwatch, then return here to select it.")
                     AppSecondaryButton(onOpenApp, enabled = !busy) { Text("Open Pocket Upwatch") }
                 }

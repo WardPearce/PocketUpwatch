@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import androidx.compose.ui.Alignment
@@ -31,6 +32,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 @Composable internal fun ServiceEditor(existing: ServiceEntry?, modifier: Modifier = Modifier, onCancel: () -> Unit, probe: Probe? = null, onSave: suspend (ServiceEntry) -> Unit) {
     val context = LocalContext.current
+    val defaults = remember { AppSettings.read(AppSettings.prefs(context)) }
     val scope = rememberCoroutineScope()
     val secrets = remember { SecretStore() }
     val loadedHeaders = remember(existing?.id) { runCatching { secrets.decrypt(existing?.headersCiphertext ?: "") } }
@@ -39,7 +41,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
     var name by rememberSaveable(existing?.id) { mutableStateOf(existing?.name ?: "") }
     var protocol by rememberSaveable(existing?.id) { mutableStateOf(existing?.url?.substringBefore("://") ?: "https") }
     var target by rememberSaveable(existing?.id) { mutableStateOf(existing?.url?.substringAfter("://") ?: "") }
-    var interval by rememberSaveable(existing?.id) { mutableIntStateOf((existing?.intervalSeconds ?: 300).coerceAtLeast(300)) }
+    var interval by rememberSaveable(existing?.id) { mutableIntStateOf((existing?.intervalSeconds ?: defaults.intervalSeconds).coerceAtLeast(300)) }
     var tags by rememberSaveable(existing?.id) { mutableStateOf(existing?.tags ?: "") }
     var method by rememberSaveable(existing?.id) { mutableStateOf(existing?.method ?: "GET") }
     var anySuccess by rememberSaveable(existing?.id) { mutableStateOf(existing?.expectedCode?.let { it == 0 } ?: true) }
@@ -54,11 +56,12 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
     var username by remember(existing?.id) { mutableStateOf(if (authMode == "Basic") basic.substringBefore(':') else "") }
     var password by remember(existing?.id) { mutableStateOf(if (authMode == "Basic") basic.substringAfter(':', "") else "") }
     var bearer by remember(existing?.id) { mutableStateOf(if (authMode == "Bearer") authorization.removePrefix("Bearer ") else "") }
-    var timeout by rememberSaveable(existing?.id) { mutableStateOf((existing?.timeoutSeconds ?: 20).toString()) }
+    var timeout by rememberSaveable(existing?.id) { mutableStateOf((existing?.timeoutSeconds ?: defaults.timeoutSeconds).toString()) }
     var redirects by rememberSaveable(existing?.id) { mutableStateOf(existing?.followRedirects ?: true) }
-    var validated by rememberSaveable(existing?.id) { mutableStateOf(existing?.requireValidatedInternet ?: true) }
-    var failures by rememberSaveable(existing?.id) { mutableStateOf((existing?.failureThreshold ?: 1).toString()) }
-    var recoveries by rememberSaveable(existing?.id) { mutableStateOf((existing?.recoveryThreshold ?: 1).toString()) }
+    var validated by rememberSaveable(existing?.id) { mutableStateOf(existing?.requireValidatedInternet ?: defaults.requireInternet) }
+    var failures by rememberSaveable(existing?.id) { mutableStateOf((existing?.failureThreshold ?: defaults.failures).toString()) }
+    var recoveries by rememberSaveable(existing?.id) { mutableStateOf((existing?.recoveryThreshold ?: defaults.recoveries).toString()) }
+    var reviewed by rememberSaveable(existing?.id) { mutableStateOf(existing?.needsReview != true) }
     var initialDown by rememberSaveable(existing?.id) { mutableStateOf(existing?.notifyInitialDown ?: true) }
     var repeat by rememberSaveable(existing?.id) { mutableStateOf((existing?.repeatMinutes ?: 0).toString()) }
     var maintenance by rememberSaveable(existing?.id) { mutableLongStateOf(existing?.maintenanceUntil ?: 0) }
@@ -87,7 +90,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
     } }
     val draft = ServiceEntry(id = existing?.id ?: 0, name = name.trim(), url = url, intervalSeconds = interval, enabled = existing?.enabled ?: true, expectedCode = if (anySuccess) 0 else status.toIntOrNull() ?: -1, bodyType = if (http) bodyType else "None", expectedBody = expectedBody, method = if (http) method else "GET", requestBody = requestBody, jsonPath = jsonPath, timeoutSeconds = timeout.toIntOrNull() ?: 0, followRedirects = redirects, requireValidatedInternet = validated, failureThreshold = failures.toIntOrNull() ?: 0, recoveryThreshold = recoveries.toIntOrNull() ?: 0, notifyInitialDown = initialDown, repeatMinutes = repeat.toIntOrNull() ?: -1, maintenanceUntil = maintenance, certificateWarnDays = warningDays.toIntOrNull() ?: -1, dnsExpected = dnsExpected, tags = tags.trim())
     val validation = when {
-        loadedHeaders.isFailure && !clearBrokenCredentials -> "Saved credentials cannot be decrypted. Clear them explicitly to replace them."
+        !reviewed -> "Review the imported settings before saving."
+        loadedHeaders.isFailure && !clearBrokenCredentials -> "Saved credentials can't be opened. Clear them and enter them again."
         parsedHeaders.isFailure -> parsedHeaders.exceptionOrNull()?.message ?: "Invalid headers"
         else -> remember(draft, parsedHeaders.getOrNull()) { ServiceValidation.error(draft, parsedHeaders.getOrDefault(emptyMap())) }
     }
@@ -106,14 +110,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
             Modifier.weight(1f).verticalScroll(scroll).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text(
-                if (existing == null) "Start with a name and target. Adjust the other settings when you need them." else "Update your target or fine-tune how this service is monitored.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            EditorSection("Service details", "What would you like to monitor?", Icons.Outlined.Dns) {
+            EditorSection("Service details", "Name and address", Icons.Outlined.Dns) {
                 OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Name") }, placeholder = { Text("e.g. Production API") }, singleLine = true)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
                     ProtocolPicker(protocol, enabled = !busy) { protocol = it }
                     OutlinedTextField(target, { input ->
                         val value = input.trim()
@@ -122,7 +121,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
                             protocol = pasted
                             target = value.substringAfter("://")
                         } else target = input
-                    }, Modifier.weight(1f).testTag("monitor-target"), enabled = !busy, label = { Text(if (protocol == "tcp") "Host:port" else if (protocol == "tls") "Host or host:port" else if (http) "Host, path and query" else "Host") }, placeholder = { Text(if (protocol == "tcp") "example.com:443" else "example.com") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+                    }, Modifier.weight(1f).heightIn(min = 64.dp).testTag("monitor-target"), enabled = !busy, label = { Text(if (protocol == "tcp") "Host:port" else "Address") }, placeholder = { Text(if (protocol == "tcp") "example.com:443" else "example.com") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
                 }
                 Text(when (protocol) {
                     "tcp" -> "Checks whether a connection can be opened to this port."
@@ -132,22 +131,25 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
                     else -> "Checks the HTTP response from this address."
                 }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            EditorSection("Monitoring", "Choose when checks run and which network they use.", Icons.Outlined.Schedule) {
+            if (existing?.needsReview == true) EditorSection("Review imported settings", "This template left out private values.", Icons.AutoMirrored.Outlined.FactCheck) {
+                EditorToggle("I've reviewed this monitor", "Check credentials, URL query values, and response rules before starting it.", reviewed, !busy) { reviewed = it }
+            }
+            EditorSection("Monitoring", "Schedule and network", Icons.Outlined.Schedule) {
                 IntervalSlider(interval, existing?.intervalSeconds, enabled = !busy) { interval = it }
                 HorizontalDivider()
-                EditorToggle("Require Internet", "Only count failures while Android confirms Internet access over Wi-Fi, mobile data, or another network. Offline checks are skipped. Turn off for local services.", validated, !busy) { validated = it }
+                EditorToggle("Require Internet", "Skip checks without Internet access. Turn off for local services.", validated, !busy) { validated = it }
             }
             EditorSection("Request settings", if (http) "$method · ${timeout}s timeout" else "${timeout}s timeout", Icons.Outlined.Tune, collapsible = true, enabled = !busy) {
                 if (http) EditorDropdown("HTTP method", method, listOf("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"), !busy) { method = it; if (it == "HEAD") bodyType = "None" }
-                OutlinedTextField(timeout, { timeout = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Timeout (seconds)") }, supportingText = { Text("Between 1 and 60 seconds") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                OutlinedTextField(timeout, { timeout = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Timeout (seconds)") }, supportingText = { Text("1–60 seconds") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 if (http) {
-                    EditorToggle("Follow redirects", "Check the final destination when a server redirects the request.", redirects, !busy) { redirects = it }
+                    EditorToggle("Follow redirects", "Follow the link when a server redirects.", redirects, !busy) { redirects = it }
                     if (method in listOf("POST", "PUT", "PATCH")) OutlinedTextField(requestBody, { requestBody = it }, Modifier.fillMaxWidth(), enabled = !busy, minLines = 3, maxLines = 8, label = { Text("Request body") })
                 }
             }
             if (http) {
                 EditorSection("Response rules", "${if (anySuccess) "Any 2xx status" else "HTTP $status"} · ${if (bodyType == "None") "No body match" else "$bodyType match"}", Icons.AutoMirrored.Outlined.FactCheck, collapsible = true, initiallyExpanded = bodyType != "None" && bodyValidation != null, enabled = !busy) {
-                    EditorToggle("Accept any 2xx status", "Treat any successful HTTP status as healthy.", anySuccess, !busy) { anySuccess = it }
+                    EditorToggle("Accept any 2xx status", "Accept any successful response.", anySuccess, !busy) { anySuccess = it }
                     if (!anySuccess) OutlinedTextField(status, { status = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Expected HTTP status") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     if (method != "HEAD") EditorDropdown("Response body match", bodyType, listOf("None", "Text", "JSON", "XML"), !busy) { bodyType = it }
                     if (bodyType != "None") OutlinedTextField(expectedBody, { expectedBody = it }, Modifier.fillMaxWidth(), enabled = !busy, minLines = 3, maxLines = 8, isError = bodyValidation != null, label = { Text("Expected $bodyType value") })
@@ -161,8 +163,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
                         OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation())
                     }
                     OutlinedTextField(headersText, { headersText = it }, Modifier.fillMaxWidth(), enabled = !busy, minLines = 2, maxLines = 6, label = { Text("Custom headers (Header: value)") }, visualTransformation = PasswordVisualTransformation())
-                    Text("Headers and credentials are encrypted on this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (loadedHeaders.isFailure) EditorToggle("Clear inaccessible saved credentials", "Replace credentials that this device can no longer decrypt.", clearBrokenCredentials, !busy) { clearBrokenCredentials = it }
+                    Text("Credentials are encrypted on this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (loadedHeaders.isFailure) EditorToggle("Replace saved credentials", "Enter credentials this device can open.", clearBrokenCredentials, !busy) { clearBrokenCredentials = it }
                 }
             }
             if (protocol == "dns") EditorSection("DNS answers", if (dnsExpected.isBlank()) "Accept any resolved IP address" else "Check expected IP addresses", Icons.AutoMirrored.Outlined.FactCheck, collapsible = true, enabled = !busy) {
@@ -173,15 +175,15 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
             }
             EditorSection("Alerts & maintenance", "$failures ${if (failures == "1") "failure" else "failures"} to mark down · ${if (maintenance > System.currentTimeMillis()) "Maintenance on" else "Maintenance off"}", Icons.Outlined.Notifications, collapsible = true, enabled = !busy) {
                 Text("State changes", style = MaterialTheme.typography.titleSmall)
-                OutlinedTextField(failures, { failures = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Failures before DOWN") }, supportingText = { Text("Consecutive failed checks, from 1 to 20") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                OutlinedTextField(recoveries, { recoveries = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Successes before UP") }, supportingText = { Text("Consecutive successful checks, from 1 to 20") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                EditorToggle("Alert when first observed state is down", "Notify even if the service has never been observed up.", initialDown, !busy) { initialDown = it }
-                OutlinedTextField(repeat, { repeat = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Repeat down alert (minutes)") }, supportingText = { Text("Set to 0 to turn reminders off") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                OutlinedTextField(failures, { failures = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Failures before marking down") }, supportingText = { Text("1–20 checks in a row") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                OutlinedTextField(recoveries, { recoveries = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Successes before recovery") }, supportingText = { Text("1–20 checks in a row") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                EditorToggle("Alert on the first outage", "Notify even if this monitor hasn't been up yet.", initialDown, !busy) { initialDown = it }
+                OutlinedTextField(repeat, { repeat = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Repeat alert (minutes)") }, supportingText = { Text("0 turns reminders off") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 HorizontalDivider()
                 EditorDropdown("Maintenance", if (maintenance > System.currentTimeMillis()) "Until ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(maintenance))}" else "Off", listOf("Off", "1 hour", "4 hours", "24 hours"), !busy) {
                     maintenance = when (it) { "1 hour" -> 1L; "4 hours" -> 4L; "24 hours" -> 24L; else -> 0L }.let { h -> if (h == 0L) 0 else System.currentTimeMillis() + h * 3_600_000 }
                 }
-                Text("Maintenance skips checks and pauses endpoint alerts.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Checks and alerts pause during maintenance.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             EditorSection("Organization", if (tags.isBlank()) "Add optional tags" else tags, Icons.AutoMirrored.Outlined.Label, collapsible = true, enabled = !busy) {
                 OutlinedTextField(tags, { tags = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Tags (comma separated)") }, placeholder = { Text("production, api") })
@@ -191,23 +193,23 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val message = actionError ?: validation?.takeIf { name.isNotBlank() && target.isNotBlank() }
                 if (message != null) Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-                else Text(if (name.isBlank() || target.isBlank()) "Add a name and target to enable Save." else "Your target is checked before saving.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else if (name.isNotBlank() && target.isNotBlank()) Text("We'll check the connection when you save.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (probeFailed) {
-                    Text("You can save this configuration paused and enable monitoring when the target is ready.", style = MaterialTheme.typography.bodySmall)
+                    Text("Save it paused and start monitoring when you're ready.", style = MaterialTheme.typography.bodySmall)
                     AppSecondaryButton(enabled = validation == null && !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                         busy = true
                         savingPaused = true
                         scope.launch {
                             try { onSave(prepared().copy(enabled = false)) }
                             catch (e: CancellationException) { throw e }
-                            catch (_: Exception) { actionError = "Could not save the monitor. Please try again." }
+                            catch (_: Exception) { actionError = "Couldn't save this monitor. Try again." }
                             finally { busy = false; savingPaused = false }
                         }
                     }) { Text("Save paused") }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    AppSecondaryButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
-                    AppButton(enabled = validation == null && !busy, modifier = Modifier.weight(2f), onClick = {
+                    AppSecondaryButton(onClick = onCancel, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) { Text("Cancel", maxLines = 1) }
+                    AppButton(enabled = validation == null && !busy, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), onClick = {
                         busy = true
                         probeFailed = false
                         actionError = null
@@ -219,13 +221,13 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
                                 if (result.up == true) { saving = true; onSave(service) }
                                 else { probeFailed = true; actionError = "Check failed: ${result.detail}" }
                             } catch (e: CancellationException) { throw e }
-                            catch (_: Exception) { probeFailed = !saving; actionError = if (saving) "Could not save the monitor. Please try again." else "Could not test the monitor. Please try again." }
+                            catch (_: Exception) { probeFailed = !saving; actionError = if (saving) "Couldn't save this monitor. Try again." else "Couldn't check the connection. Try again." }
                             finally { busy = false }
                         }
                     }) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (busy) CircularProgressIndicator(Modifier.size(16.dp).testTag("save-progress"), color = LocalContentColor.current, strokeWidth = 2.dp)
-                            Text(if (savingPaused) "Saving…" else if (busy) "Checking…" else "Save")
+                            Text(if (savingPaused) "Saving…" else if (busy) "Checking…" else "Save", Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }

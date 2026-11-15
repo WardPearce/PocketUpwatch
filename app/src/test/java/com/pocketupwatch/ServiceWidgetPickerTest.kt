@@ -58,7 +58,7 @@ class ServiceWidgetPickerTest {
         var opened = false
         var cancelled = false
         compose.setContent { MaterialTheme { ServiceWidgetPicker(emptyList(), 0, false, false, null, {}, { cancelled = true }, { opened = true }, {}) } }
-        compose.onNodeWithText("No services yet").assertIsDisplayed()
+        compose.onNodeWithText("No monitors yet").assertIsDisplayed()
         compose.onNodeWithText("Add widget").assertIsNotEnabled()
         compose.onNodeWithText("Open Pocket Upwatch").performClick()
         assertTrue(opened)

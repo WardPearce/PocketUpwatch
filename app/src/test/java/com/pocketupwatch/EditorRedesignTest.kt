@@ -33,11 +33,11 @@ class EditorRedesignTest {
         compose.onNodeWithText("Require validated internet").assertDoesNotExist()
         compose.onNodeWithText("Timeout (seconds)").assertDoesNotExist()
         compose.onNodeWithText("Bearer token").assertDoesNotExist()
-        compose.onNodeWithText("Failures before DOWN").assertDoesNotExist()
+        compose.onNodeWithText("Failures before marking down").assertDoesNotExist()
         compose.onNodeWithText("Save").assertIsDisplayed()
         saveScreenshot("add-service-light")
         compose.onNodeWithText("Alerts & maintenance").performScrollTo().performClick()
-        compose.onNodeWithText("Failures before DOWN").assertExists()
+        compose.onNodeWithText("Failures before marking down").assertExists()
         compose.onNodeWithText("Save").assertIsDisplayed()
         compose.onNodeWithText("Cancel").assertIsDisplayed()
     }
@@ -61,7 +61,7 @@ class EditorRedesignTest {
         var saved: ServiceEntry? = null
         compose.setContent { screenshotView = LocalView.current; MaterialTheme { Surface { ServiceEditor(null, onCancel = {}, probe = ok, onSave = { saved = it }) } } }
         compose.onNodeWithText("Name").performTextInput("Local API")
-        compose.onNodeWithText("Host, path and query").performTextInput("192.168.1.2/health")
+        compose.onNodeWithText("Address").performTextInput("192.168.1.2/health")
         compose.onNodeWithContentDescription("Require Internet").performScrollTo().performClick().assertIsOff()
         compose.onNodeWithText("Save").performClick()
         compose.waitUntil(10_000) { saved != null }
@@ -83,7 +83,7 @@ class EditorRedesignTest {
         compose.setContent { screenshotView = LocalView.current; MaterialTheme { Surface { ServiceEditor(existing, onCancel = {}, probe = ok, onSave = { saved = it }) } } }
         compose.onNodeWithTag("interval-battery-warning").assertDoesNotExist()
         compose.onNodeWithTag("interval-slider").performScrollTo().performSemanticsAction(SemanticsActions.SetProgress) { it(0f) }
-        compose.onNodeWithText("Check interval: 5min").assertExists()
+        compose.onNodeWithText("Check interval: 5 min").assertExists()
         compose.onNodeWithTag("interval-battery-warning").assertDoesNotExist()
         compose.onNodeWithText("Save").assertIsEnabled()
         saveScreenshot("five-minute-minimum")
