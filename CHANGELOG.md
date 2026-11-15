@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.9
 
 - Use bold white UP/DOWN text on opaque green/red badges, with contrasting borders in dark mode and measured text contrast of at least 7:1 in both themes.
 - Automatically select the protocol and remove its prefix when entering or pasting HTTP(S) URLs, including mixed-case schemes and surrounding whitespace; retain the host, port, path, and query.

@@ -66,7 +66,7 @@ Pull requests run tests, Android lint, and the debug build without signing secre
 
 ## Android releases
 
-Version 0.1.8 uses version code 14. Before the next release, update `versionName` and increase `versionCode` in `app/build.gradle.kts`. Every push to `main` validates the project, then builds a signed APK. If `v<versionName>` does not exist, the workflow creates a tag and GitHub release. Existing version tags skip publication.
+Version 0.1.9 uses version code 15. Before the next release, update `versionName` and increase `versionCode` in `app/build.gradle.kts`. Every push to `main` validates the project, then builds a signed APK. If `v<versionName>` does not exist, the workflow creates a tag and GitHub release. Existing version tags skip publication.
 
 Configure repository Actions secrets:
 
