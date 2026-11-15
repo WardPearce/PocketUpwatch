@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Use bold white UP/DOWN text on opaque green/red badges, with contrasting borders in dark mode and measured text contrast of at least 7:1 in both themes.
+- Automatically select the protocol and remove its prefix when entering or pasting HTTP(S) URLs, including mixed-case schemes and surrounding whitespace; retain the host, port, path, and query.
 - Add overview counts and combined status, tag, and search filters, compact sorting, and explicit all-monitor actions.
 - Align displayed health and widgets with confirmed alert thresholds; show latest-check progress and last confirmed health separately from skipped/stale/paused states.
 - Offer Save paused after failed or unknown save-time checks, without another probe or recording history.

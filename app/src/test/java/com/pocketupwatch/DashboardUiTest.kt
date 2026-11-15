@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.unit.dp
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
@@ -165,6 +166,25 @@ class DashboardUiTest {
         compose.onNodeWithText("Save paused").performClick()
         compose.waitUntil(10_000) { saved != null }
         assertFalse(saved!!.enabled)
+    }
+
+    @Test fun fullWebUrlIsSplitBetweenProtocolAndHostInTheEditor() {
+        compose.setContent {
+            view = LocalView.current
+            MaterialTheme(colorScheme = scheme(false)) {
+                Scaffold(topBar = { AppTopBar("Add monitor", onBack = {}) }) { padding ->
+                    ServiceEditor(null, Modifier.padding(padding), onCancel = {}, probe = Probe { ProbeResult(true, "HTTP 200") }, onSave = {})
+                }
+            }
+        }
+        compose.onNodeWithText("Name").performTextInput("Example website")
+        compose.onNodeWithTag("monitor-target").performTextReplacement("http://example.com")
+        compose.onNodeWithContentDescription("Protocol").assertTextContains("HTTP")
+        compose.onNodeWithTag("monitor-target").performTextReplacement("https://example.com")
+        compose.onNodeWithContentDescription("Protocol").assertTextContains("HTTPS")
+        assertEquals("example.com", compose.onNodeWithTag("monitor-target").fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+        compose.onNodeWithText("Save").assertIsEnabled()
+        screenshot("improved-auto-protocol")
     }
 
     @Test fun pausedSaveDisablesDuplicateActionsAndRecoversFromPersistenceFailure() {

@@ -5,6 +5,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
@@ -90,17 +91,23 @@ internal fun formatInterval(seconds: Int): String {
 }
 
 @Composable internal fun StatusBadge(status: String) {
+    val strong = status == "UP" || status == "DOWN"
+    val dark = MaterialTheme.colorScheme.surface.luminance() <= 0.5f
     val tint = when (status) {
-        "UP" -> if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) Color(0xff005c3b) else Color(0xff74ddb2)
-        "DOWN" -> MaterialTheme.colorScheme.error
+        "UP" -> Color(0xff005c3b)
+        "DOWN" -> Color(0xff8c1d18)
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
+    val outline = if (dark && strong) {
+        if (status == "UP") Color(0xff83d9af) else Color(0xffffb4ab)
+    } else if (strong) tint else tint.copy(alpha = 0.45f)
     Surface(
         shape = RoundedCornerShape(8.dp),
-        color = tint.copy(alpha = 0.10f),
-        contentColor = tint,
-        border = BorderStroke(1.dp, tint.copy(alpha = 0.45f))
+        color = if (strong) tint else tint.copy(alpha = 0.10f),
+        contentColor = if (strong) Color.White else tint,
+        border = BorderStroke(1.dp, outline)
     ) {
-        Text(status, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
+        Text(status, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (strong) FontWeight.Bold else FontWeight.Medium)
     }
 }

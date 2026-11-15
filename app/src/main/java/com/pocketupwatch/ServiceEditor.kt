@@ -116,12 +116,13 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     ProtocolPicker(protocol, enabled = !busy) { protocol = it }
                     OutlinedTextField(target, { input ->
-                        val pasted = input.substringBefore("://").lowercase()
-                        if (input.contains("://") && pasted in listOf("http", "https", "tcp", "ping", "dns", "tls")) {
+                        val value = input.trim()
+                        val pasted = value.substringBefore("://").lowercase(java.util.Locale.ROOT)
+                        if (value.contains("://") && pasted in listOf("http", "https", "tcp", "ping", "dns", "tls")) {
                             protocol = pasted
-                            target = input.substringAfter("://")
+                            target = value.substringAfter("://")
                         } else target = input
-                    }, Modifier.weight(1f), enabled = !busy, label = { Text(if (protocol == "tcp") "Host:port" else if (protocol == "tls") "Host or host:port" else if (http) "Host, path and query" else "Host") }, placeholder = { Text(if (protocol == "tcp") "example.com:443" else "example.com") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+                    }, Modifier.weight(1f).testTag("monitor-target"), enabled = !busy, label = { Text(if (protocol == "tcp") "Host:port" else if (protocol == "tls") "Host or host:port" else if (http) "Host, path and query" else "Host") }, placeholder = { Text(if (protocol == "tcp") "example.com:443" else "example.com") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
                 }
                 Text(when (protocol) {
                     "tcp" -> "Checks whether a connection can be opened to this port."

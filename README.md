@@ -6,6 +6,8 @@ An Android uptime monitor built with Kotlin, Compose, and Room. Monitor HTTP(S),
 
 The add/edit form groups service details and monitoring essentials into cards. Expand request, response, authentication, alerts, or organization sections only when needed; closed sections summarize their current settings. Save and Cancel stay visible at the bottom, and existing settings are preserved when editing.
 
+Enter or paste a full URL to select its protocol automatically: `https://example.com` selects HTTPS and leaves `example.com` in the target field. HTTP works the same way; ports, paths, and query strings are preserved.
+
 Add a target, choose a check interval from 5 minutes to 24 hours with the interval slider, and save it. Save checks the target first; a failed or unknown check keeps the editor open, shows an error, and offers **Save paused**. This saves a valid configuration without another probe, history, or alerts so you can enable it when the target is ready. Invalid configurations cannot be saved. Existing intervals below 5 minutes are raised to 5 minutes when the database opens. Monitors begin checking after a successful save; each can be paused independently.
 
 The overview shows tappable All, Down, Unknown, and Paused counts. Status filters combine with name/target/tag search and exact tag chips; Clear filters resets them together. Unknown includes skipped, stale, stopped, and pending checks. Maintenance stays separate. Sort the collection by status/name/tag, or use the actions menu to pause/resume **all** monitors, including those outside the current filters. Cards show relative check age and labeled monitoring switches.

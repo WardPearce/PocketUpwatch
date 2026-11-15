@@ -44,31 +44,33 @@ class ButtonContrastTest {
     fun lightButtonsHaveVisibleBoundariesEvenWhenSystemThemeIsDark() = verifyPalettes(false)
     @Test fun darkButtonsKeepTheirOriginalFilledStyleAcrossAccentColors() = verifyPalettes(true)
 
-    @Test fun healthyBadgeTextHasReadableContrastInBothThemes() {
+    @Test fun upAndDownBadgeTextHasStrongContrastInBothThemes() {
         var dark by mutableStateOf(false)
         compose.setContent {
             view = LocalView.current
             MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
-                Surface(Modifier.fillMaxSize()) { Column(Modifier.padding(16.dp)) { DetailSection { StatusBadge("UP") } } }
+                Surface(Modifier.fillMaxSize()) { Column(Modifier.padding(16.dp)) { DetailSection { StatusBadge("UP"); StatusBadge("DOWN") } } }
             }
         }
         for (mode in listOf(false, true)) {
             compose.runOnIdle { dark = mode }
             compose.waitForIdle()
-            val text = compose.onNodeWithText("UP")
-            val layouts = mutableListOf<TextLayoutResult>()
-            text.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
-            val foreground = layouts.single().layoutInput.style.color.toArgb()
-            val bounds = text.fetchSemanticsNode().boundsInRoot
             val bitmap = drawScreen()
             try {
-                // Text semantics bounds cover the glyph layout; sample the badge's padded area beside it.
-                val background = bitmap.getPixel(bounds.left.roundToInt() - 8, bounds.center.y.roundToInt())
-                val contrast = ColorUtils.calculateContrast(foreground, background)
-                assertTrue("UP text needs 4.5:1 contrast in ${if (mode) "dark" else "light"} mode (actual $contrast)", contrast >= 4.5)
-                assertTrue("The readable color must actually be rendered", (bounds.top.roundToInt() until bounds.bottom.roundToInt()).any { y ->
-                    (bounds.left.roundToInt() until bounds.right.roundToInt()).any { x -> bitmap.getPixel(x, y) == foreground }
-                })
+                for (status in listOf("UP", "DOWN")) {
+                    val text = compose.onNodeWithText(status)
+                    val layouts = mutableListOf<TextLayoutResult>()
+                    text.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+                    val foreground = layouts.single().layoutInput.style.color.toArgb()
+                    val bounds = text.fetchSemanticsNode().boundsInRoot
+                    // Text bounds cover the glyph layout; sample the badge's padded area beside it.
+                    val background = bitmap.getPixel(bounds.left.roundToInt() - 8, bounds.center.y.roundToInt())
+                    val contrast = ColorUtils.calculateContrast(foreground, background)
+                    assertTrue("$status text needs 7:1 contrast in ${if (mode) "dark" else "light"} mode (actual $contrast)", contrast >= 7.0)
+                    assertTrue("The readable color must actually be rendered", (bounds.top.roundToInt() until bounds.bottom.roundToInt()).any { y ->
+                        (bounds.left.roundToInt() until bounds.right.roundToInt()).any { x -> bitmap.getPixel(x, y) == foreground }
+                    })
+                }
             } finally { bitmap.recycle() }
         }
     }
