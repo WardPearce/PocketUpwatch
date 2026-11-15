@@ -1,4 +1,12 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("org.jetbrains.kotlin.kapt") }
+// Tests use API 28 plus API 35 for resource loading. Resolve both through Gradle,
+// rather than making Robolectric download it (and checksums) during every test run.
+val robolectricSdk by configurations.creating { isCanBeConsumed = false; isTransitive = false }
+val robolectricResourcesSdk by configurations.creating { isCanBeConsumed = false; isTransitive = false }
+val prepareRobolectricSdk = tasks.register<Sync>("prepareRobolectricSdk") {
+    from(robolectricSdk, robolectricResourcesSdk)
+    into(layout.buildDirectory.dir("robolectric-sdk"))
+}
 android {
     namespace = "com.pocketupwatch"
     compileSdk = 35
@@ -30,7 +38,9 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
         unitTests.all {
-            it.systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
+            it.dependsOn(prepareRobolectricSdk)
+            it.systemProperty("robolectric.offline", "true")
+            it.systemProperty("robolectric.dependency.dir", layout.buildDirectory.dir("robolectric-sdk").get().asFile.absolutePath)
             listOf("http.proxyHost", "http.proxyPort", "https.proxyHost", "https.proxyPort").forEach { name ->
                 System.getProperty(name)?.let { value -> it.systemProperty(name, value) }
             }
@@ -43,6 +53,8 @@ android {
 }
 kapt { arguments { arg("room.schemaLocation", "$projectDir/schemas") } }
 dependencies {
+    add(robolectricSdk.name, "org.robolectric:android-all-instrumented:9-robolectric-4913185-2-i7")
+    add(robolectricResourcesSdk.name, "org.robolectric:android-all-instrumented:15-robolectric-12650502-i7")
     implementation("com.google.code.gson:gson:2.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     testImplementation("org.robolectric:robolectric:4.14.1")
