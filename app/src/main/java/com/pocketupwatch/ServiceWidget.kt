@@ -47,7 +47,7 @@ internal data class ServiceWidgetSnapshot(val selectedId: Long?, val data: Servi
     val downCount get() = data.buckets.sumOf { it.downCount }
     val skippedCount get() = data.buckets.sumOf { it.skippedCount }
     val uptime: Double? get() = (upCount + downCount).takeIf { it > 0 }?.let { upCount.toDouble() / it }
-    val status: String get() = data.service?.let { MonitorStatus.label(it, data.latest, active, now) } ?: "SETUP"
+    val status: String get() = data.service?.let { MonitorStatus.label(it, data.latest, active, now, data.alertState) } ?: "SETUP"
     companion object {
         const val WINDOW_MS = 86_400_000L
         const val BUCKET_MS = 900_000L

@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -199,12 +200,13 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
     var editingId by rememberSaveable { mutableLongStateOf(0) }
     var selectedId by rememberSaveable { mutableLongStateOf(0) }
     var tools by rememberSaveable { mutableStateOf(false) }
-    var search by rememberSaveable { mutableStateOf("") }
-    var sort by rememberSaveable { mutableStateOf("Newest") }
+    val dashboardState = rememberSaveableStateHolder()
     val active by MonitorService.active.collectAsStateWithLifecycle()
     val now = rememberNow()
     val latestChecks by remember { vm.dao.latestChecks() }.collectAsStateWithLifecycle(initialValue = emptyList())
     val latestById = latestChecks.associateBy { it.serviceId }
+    val alerts by remember { vm.dao.alertStates() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val alertById = alerts.associateBy { it.serviceId }
     val error by vm.error.collectAsStateWithLifecycle()
     val prefs = remember { context.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE) }
     var onboardingComplete by rememberSaveable { mutableStateOf(prefs.getBoolean("onboarding_complete", false)) }
@@ -237,51 +239,19 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
             tools -> LibraryTools(vm, mode, onMode, Modifier.padding(padding))
             selected != null -> Detail(selected, vm, Modifier.padding(padding), onEdit = { editingId = it.id }, onDeleted = { selectedId = 0 })
             else -> {
-                val visible = services.filter { "${it.name} ${displayTarget(it.url)} ${it.tags}".contains(search, true) }.let { matches -> when (sort) { "Name" -> matches.sortedBy { it.name.lowercase() }; "Paused first" -> matches.sortedBy { it.enabled }; "Tag" -> matches.sortedBy { it.tags.lowercase() }; "Status" -> matches.sortedWith(compareBy<ServiceEntry> { when (MonitorStatus.label(it, latestById[it.id], active, now)) { "DOWN" -> 0; "STALE" -> 1; "UNKNOWN" -> 2; "STOPPED" -> 3; "PENDING" -> 4; "UP" -> 5; else -> 6 } }.thenBy { it.name.lowercase() }); else -> matches } }
-                LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(16.dp, 12.dp, 16.dp, 100.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    item {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(if (active) "${services.count { it.enabled }} enabled monitors" else "Monitoring stopped")
-                            Text("Results reflect this device and network. Unknown gaps are excluded from success rates.", style = MaterialTheme.typography.bodySmall)
-                            if (!androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) Text("Notifications are disabled. Enable them in app settings to receive alerts.", color = MaterialTheme.colorScheme.error)
-                            if (!CheckAlarm.canScheduleExact(context)) AppSecondaryButton(onClick = { context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}"))) }) { Text("Allow timely alarms") }
-                            TextField(search, { search = it }, Modifier.fillMaxWidth(), label = { Text("Search names, targets, or tags") }, singleLine = true)
-                            ChoiceMenu("Sort", sort, listOf("Newest", "Name", "Status", "Paused first", "Tag")) { sort = it }
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                AppSecondaryButton(onClick = { vm.setAll(false) }, modifier = Modifier.weight(1f), enabled = services.any { it.enabled }) { Text("Pause all") }
-                                AppSecondaryButton(onClick = { vm.setAll(true) }, modifier = Modifier.weight(1f), enabled = services.any { !it.enabled }) { Text("Resume all") }
-                            }
-                        }
-                    }
-                    if (visible.isEmpty()) item { Text(if (services.isEmpty()) "Add your first monitor to start checking." else "No matching monitors") }
-                    items(visible, key = { it.id }) { service -> ServiceCard(service, vm, onToggle = { vm.save(service.copy(enabled = it)) }) { selectedId = service.id } }
+                val diagnostics = BackgroundDiagnostics.prefs(context)
+                val health = backgroundHealth(services, latestById, active, now,
+                    diagnostics.getLong("last_result", 0), diagnostics.getLong("last_error_time", 0), diagnostics.getString("last_error", null),
+                    androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled(), CheckAlarm.canScheduleExact(context))
+                dashboardState.SaveableStateProvider("dashboard") {
+                    MonitorDashboard(services, latestById, alertById, active, now, health, Modifier.padding(padding),
+                        onDiagnostics = { tools = true }, onSetAll = { vm.setAll(it) },
+                        onToggle = { service, enabled -> vm.save(service.copy(enabled = enabled)) }, onSelect = { selectedId = it.id })
                 }
             }
         }
     }
     if (error != null) AlertDialog(onDismissRequest = { vm.error.value = null }, title = { Text("Could not complete action") }, text = { Text(error!!) }, confirmButton = { AppSecondaryButton(onClick = { vm.error.value = null }) { Text("OK") } })
-}
-
-@Composable fun ServiceCard(service: ServiceEntry, vm: MonitorViewModel, onToggle: (Boolean) -> Unit, onClick: () -> Unit) {
-    val latest by remember(service.id) { vm.dao.latestFlow(service.id) }.collectAsStateWithLifecycle(initialValue = null)
-    val active by MonitorService.active.collectAsStateWithLifecycle()
-    val now = rememberNow()
-    val status = MonitorStatus.label(service, latest, active, now)
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(Modifier.weight(1f)) {
-                    Text(service.name, style = MaterialTheme.typography.titleMedium)
-                    Text(displayTarget(service.url), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-                }
-                StatusBadge(status)
-                Switch(service.enabled, onToggle)
-            }
-            if (service.tags.isNotBlank()) Text(service.tags, style = MaterialTheme.typography.labelSmall)
-            Text(latest?.let { if (it.skipped) it.detail else "${it.responseMs} ms · ${it.detail}" } ?: "No checks yet")
-            Text(latest?.let { "Last attempt ${formatTime(it.time)}" } ?: "Every ${formatInterval(service.intervalSeconds)}", style = MaterialTheme.typography.bodySmall)
-        }
-    }
 }
 
 @Composable fun ChoiceMenu(label: String, value: String, options: List<String>, onSelect: (String) -> Unit) {
@@ -294,6 +264,7 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
 
 @Composable fun Detail(service: ServiceEntry, vm: MonitorViewModel, modifier: Modifier, onEdit: (ServiceEntry) -> Unit, onDeleted: () -> Unit) {
     val latest by remember(service.id) { vm.dao.latestFlow(service.id) }.collectAsStateWithLifecycle(initialValue = null)
+    val alertState by remember(service.id) { vm.dao.alertStateFlow(service.id) }.collectAsStateWithLifecycle(initialValue = null)
     val active by MonitorService.active.collectAsStateWithLifecycle()
     val incidents by remember(service.id) { vm.dao.incidents(service.id) }.collectAsStateWithLifecycle(initialValue = emptyList())
     val now = rememberNow()
@@ -311,7 +282,7 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
         DetailSection(Modifier.testTag("service-status")) {
             Text("Status", style = MaterialTheme.typography.titleMedium)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                StatusBadge(MonitorStatus.label(service, latest, active, now))
+                StatusBadge(MonitorStatus.label(service, latest, active, now, alertState))
                 latest?.takeUnless { it.skipped }?.let {
                     Column(horizontalAlignment = Alignment.End) {
                         Text("Response time", style = MaterialTheme.typography.labelSmall)
@@ -319,7 +290,7 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
                     }
                 }
             }
-            latest?.let { Text(it.detail, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            HealthEvidence(service, latest, alertState, MonitorStatus.label(service, latest, active, now, alertState))
         }
         DetailSection(Modifier.testTag("service-actions")) {
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {

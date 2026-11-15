@@ -2,6 +2,7 @@ package com.pocketupwatch
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import kotlin.math.abs
 import kotlinx.coroutines.CompletableDeferred
 import okhttp3.mockwebserver.MockResponse
@@ -19,6 +20,42 @@ import org.robolectric.annotation.Config
 @Config(sdk = [28])
 class EditorUiTest {
     @get:Rule val compose = createComposeRule()
+    @Test fun pastedWebUrlsSelectTheirProtocolAndKeepTheCompleteTarget() {
+        val saved = mutableListOf<ServiceEntry>()
+        compose.setContent { MaterialTheme { ServiceEditor(null, onCancel = {}, probe = Probe { ProbeResult(true, "HTTP 200") }, onSave = { saved.add(it) }) } }
+        compose.onNodeWithText("Name").performTextInput("Example")
+        val cases = listOf(
+            Triple("http://example.com", "HTTP", "example.com"),
+            Triple("  HTTPS://Example.com:8443/Health?next=http://other.example/a  ", "HTTPS", "Example.com:8443/Health?next=http://other.example/a")
+        )
+        cases.forEachIndexed { index, (input, protocol, target) ->
+            compose.onNodeWithTag("monitor-target").performScrollTo().performTextReplacement(input)
+            compose.onNodeWithContentDescription("Protocol").assertTextContains(protocol)
+            assertEquals(target, compose.onNodeWithTag("monitor-target").fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+            compose.onNodeWithText("Save").performClick()
+            compose.waitUntil(10_000) { saved.size == index + 1 }
+        }
+        assertEquals("http://example.com/", saved[0].url)
+        assertEquals("https://example.com:8443/Health?next=http://other.example/a", saved[1].url)
+        // A URL embedded in a query must not change the selected protocol or strip part of the target.
+        val bare = "example.com/health?redirect=http://other.example"
+        compose.onNodeWithTag("monitor-target").performTextReplacement(bare)
+        compose.onNodeWithContentDescription("Protocol").assertTextContains("HTTPS")
+        assertEquals(bare, compose.onNodeWithTag("monitor-target").fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+    }
+
+    @Test fun webProtocolsAreDetectedWhenTypedOneCharacterAtATime() {
+        compose.setContent { MaterialTheme { ServiceEditor(null, onCancel = {}, probe = Probe { ProbeResult(true, "HTTP 200") }, onSave = {}) } }
+        for (protocol in listOf("http", "https")) {
+            compose.onNodeWithTag("monitor-target").performTextClearance()
+            "$protocol://".forEach { compose.onNodeWithTag("monitor-target").performTextInput(it.toString()) }
+            compose.onNodeWithContentDescription("Protocol").assertTextContains(protocol.uppercase())
+            assertEquals("", compose.onNodeWithTag("monitor-target").fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+            "example.com".forEach { compose.onNodeWithTag("monitor-target").performTextInput(it.toString()) }
+            assertEquals("example.com", compose.onNodeWithTag("monitor-target").fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+        }
+    }
+
     @Test fun existingAny2xxMonitorCanBeSavedWithoutConvertingTo200() {
         val existing = ServiceEntry(id = 1, name = "Health", url = "https://example.com/health", intervalSeconds = 300, expectedCode = 0)
         var saved: ServiceEntry? = null

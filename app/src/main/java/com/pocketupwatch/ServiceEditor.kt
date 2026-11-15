@@ -65,6 +65,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
     var warningDays by rememberSaveable(existing?.id) { mutableStateOf((existing?.certificateWarnDays ?: 30).toString()) }
     var dnsExpected by rememberSaveable(existing?.id) { mutableStateOf(existing?.dnsExpected ?: "") }
     var busy by remember { mutableStateOf(false) }
+    var probeFailed by remember { mutableStateOf(false) }
+    var savingPaused by remember { mutableStateOf(false) }
     var actionError by remember { mutableStateOf<String?>(null) }
     val url = "$protocol://${target.trim()}"
     val http = protocol in listOf("http", "https")
@@ -114,12 +116,13 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     ProtocolPicker(protocol, enabled = !busy) { protocol = it }
                     OutlinedTextField(target, { input ->
-                        val pasted = input.substringBefore("://").lowercase()
-                        if (input.contains("://") && pasted in listOf("http", "https", "tcp", "ping", "dns", "tls")) {
+                        val value = input.trim()
+                        val pasted = value.substringBefore("://").lowercase(java.util.Locale.ROOT)
+                        if (value.contains("://") && pasted in listOf("http", "https", "tcp", "ping", "dns", "tls")) {
                             protocol = pasted
-                            target = input.substringAfter("://")
+                            target = value.substringAfter("://")
                         } else target = input
-                    }, Modifier.weight(1f), enabled = !busy, label = { Text(if (protocol == "tcp") "Host:port" else if (protocol == "tls") "Host or host:port" else if (http) "Host, path and query" else "Host") }, placeholder = { Text(if (protocol == "tcp") "example.com:443" else "example.com") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+                    }, Modifier.weight(1f).testTag("monitor-target"), enabled = !busy, label = { Text(if (protocol == "tcp") "Host:port" else if (protocol == "tls") "Host or host:port" else if (http) "Host, path and query" else "Host") }, placeholder = { Text(if (protocol == "tcp") "example.com:443" else "example.com") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
                 }
                 Text(when (protocol) {
                     "tcp" -> "Checks whether a connection can be opened to this port."
@@ -189,10 +192,24 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
                 val message = actionError ?: validation?.takeIf { name.isNotBlank() && target.isNotBlank() }
                 if (message != null) Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                 else Text(if (name.isBlank() || target.isBlank()) "Add a name and target to enable Save." else "Your target is checked before saving.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (probeFailed) {
+                    Text("You can save this configuration paused and enable monitoring when the target is ready.", style = MaterialTheme.typography.bodySmall)
+                    AppSecondaryButton(enabled = validation == null && !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                        busy = true
+                        savingPaused = true
+                        scope.launch {
+                            try { onSave(prepared().copy(enabled = false)) }
+                            catch (e: CancellationException) { throw e }
+                            catch (_: Exception) { actionError = "Could not save the monitor. Please try again." }
+                            finally { busy = false; savingPaused = false }
+                        }
+                    }) { Text("Save paused") }
+                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     AppSecondaryButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
                     AppButton(enabled = validation == null && !busy, modifier = Modifier.weight(2f), onClick = {
                         busy = true
+                        probeFailed = false
                         actionError = null
                         scope.launch {
                             var saving = false
@@ -200,15 +217,15 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
                                 val service = prepared()
                                 val result = withContext(Dispatchers.IO) { probe?.execute(service) ?: ProbeEngine.runner(context).run(service) }
                                 if (result.up == true) { saving = true; onSave(service) }
-                                else actionError = "Check failed: ${result.detail}"
+                                else { probeFailed = true; actionError = "Check failed: ${result.detail}" }
                             } catch (e: CancellationException) { throw e }
-                            catch (_: Exception) { actionError = if (saving) "Could not save the monitor. Please try again." else "Could not test the monitor. Please try again." }
+                            catch (_: Exception) { probeFailed = !saving; actionError = if (saving) "Could not save the monitor. Please try again." else "Could not test the monitor. Please try again." }
                             finally { busy = false }
                         }
                     }) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (busy) CircularProgressIndicator(Modifier.size(16.dp).testTag("save-progress"), color = LocalContentColor.current, strokeWidth = 2.dp)
-                            Text(if (busy) "Checking…" else "Save")
+                            Text(if (savingPaused) "Saving…" else if (busy) "Checking…" else "Save")
                         }
                     }
                 }
