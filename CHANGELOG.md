@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.12
+
+- Move maintenance directly above the Manage monitor panel at the bottom of the service page. Keep both panels stacked together on phones and tablets.
+
 ## 0.1.11
 
 - Edit request and expected bodies with Sora: JSON, YAML and XML highlighting, line numbers, validation, undo/redo, and an expanded editor. Preview formatting before applying it.

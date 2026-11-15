@@ -381,7 +381,6 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
             if (!service.enabled) Text("Tests on paused monitors don't save history or send alerts.", style = MaterialTheme.typography.bodySmall)
             diagnostic?.let { Text("${if (it.up == null) "UNKNOWN" else if (it.up) "UP" else "DOWN"} · ${it.responseMs} ms · ${it.detail}") }
         }
-        MaintenanceControls(service.maintenanceUntil, now) { vm.setMaintenance(service.id, it) }
         if (service.bodyType != "None") DetailSection(Modifier.testTag("expected-response")) {
             Text("Response check", style = MaterialTheme.typography.titleMedium)
             if (service.jsonPath.isNotBlank() && service.bodyType == "JSON") Text("JSON path: ${service.jsonPath}", style = MaterialTheme.typography.bodySmall)
@@ -440,11 +439,14 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
             Text("Hourly summaries stay after older checks are removed. Gaps remain unknown.", style = MaterialTheme.typography.bodySmall)
         }
         RecentChecks(service.id, vm.dao)
-        DetailSection {
-            Text("Manage monitor", style = MaterialTheme.typography.titleLarge)
-            CsvExportButtons(service.id, vm.dao)
-            HorizontalDivider()
-            AppDangerButton(onClick = { confirm = true }, modifier = Modifier.fillMaxWidth()) { Text("Delete monitor") }
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            MaintenanceControls(service.maintenanceUntil, now) { vm.setMaintenance(service.id, it) }
+            DetailSection {
+                Text("Manage monitor", style = MaterialTheme.typography.titleLarge)
+                CsvExportButtons(service.id, vm.dao)
+                HorizontalDivider()
+                AppDangerButton(onClick = { confirm = true }, modifier = Modifier.fillMaxWidth()) { Text("Delete monitor") }
+            }
         }
     }
     if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("Delete ${service.name}?") }, text = { Text("Its checks, summaries and incidents will also be deleted.") }, confirmButton = { AppDangerButton(onClick = { vm.delete(service, onDeleted) }) { Text("Delete") } }, dismissButton = { AppSecondaryButton(onClick = { confirm = false }) { Text("Cancel") } })

@@ -30,7 +30,7 @@ Request bodies and expected responses use Sora 0.23.7 in a Compose AndroidView. 
 
 ## Alerts, incidents, and history
 
-Configure consecutive failure/recovery thresholds (default for new monitors: one failure and one recovery), initial-down alerts, repeat reminders, and maintenance windows. Start a 1, 4, or 24-hour maintenance window or end it on the service page; editing a monitor preserves its existing window. Unknown/skipped checks break pending streaks and never count as endpoint failures or recovery. Confirmed incidents record observed start/end times, failure reasons, and failed/unknown check counts. Notifications open the affected monitor. Grant notification permission to receive alerts.
+Configure consecutive failure/recovery thresholds (default for new monitors: one failure and one recovery), initial-down alerts, repeat reminders, and maintenance windows. Start a 1, 4, or 24-hour maintenance window or end it on the service page, directly above Manage monitor; editing a monitor preserves its existing window. Unknown/skipped checks break pending streaks and never count as endpoint failures or recovery. Confirmed incidents record observed start/end times, failure reasons, and failed/unknown check counts. Notifications open the affected monitor. Grant notification permission to receive alerts.
 
 The detail screen shows availability and mean response times for 1 hour, 24 hours, 7 days, or 30 days. Statistics query the selected period; graphs aggregate samples into time buckets. Recent raw checks are paginated independently, with aligned Previous/Next controls and an explicit page count. Older pages stay anchored while new checks arrive; returning to the first page shows the latest samples. Unknown and missing checks are excluded from success rates. A successful sample percentage does not establish continuous uptime. Open either graph in landscape fullscreen. Stale state refreshes while viewing a screen, even when no new checks arrive.
 
@@ -95,7 +95,7 @@ Pull requests run tests, Android lint, and the debug build without signing secre
 
 ## Android releases
 
-Version 0.1.11 uses version code 17. Before the next release, update `versionName` and increase `versionCode` in `app/build.gradle.kts`. Every push to `main` validates the project, then builds a signed APK. If `v<versionName>` does not exist, the workflow creates a tag and GitHub release. Existing version tags skip publication.
+Version 0.1.12 uses version code 18. Before the next release, update `versionName` and increase `versionCode` in `app/build.gradle.kts`. Every push to `main` validates the project, then builds a signed APK. If `v<versionName>` does not exist, the workflow creates a tag and GitHub release. Existing version tags skip publication.
 
 Configure repository Actions secrets:
 
