@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.KeyboardOptions
@@ -71,6 +72,7 @@ private val settingPages = listOf("Monitoring", "Notifications", "Appearance and
         onDispose { lifecycle.removeObserver(observer) }
     }
     LaunchedEffect(Unit) { AppNotifications.channels(context); refresh++ }
+    var licenses by remember { mutableStateOf(false) }
     var page by rememberSaveable { mutableStateOf(initialPage.takeIf { it in settingPages } ?: "Settings") }
     var previousEntry by rememberSaveable { mutableStateOf(initialPage) }
     var previousRequest by rememberSaveable { mutableIntStateOf(entryRequest) }
@@ -246,6 +248,7 @@ private val settingPages = listOf("Monitoring", "Notifications", "Appearance and
                         SettingsHeading("Widgets and Quick Settings")
                         Text("Touch and hold your home screen, open Widgets, then choose Pocket Upwatch. The Service uptime widget lets you pick a monitor.")
                         Text("To add the pause/resume tile, open Quick Settings and tap Edit. Look for Pocket Upwatch.")
+                        SettingsRow("Open-source licenses", "Editor, parsers and library notices", Icons.Outlined.Description) { licenses = true }
                         SettingsRow("Release notes", "What's new", Icons.Outlined.NewReleases) { open(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/WardPearce/PocketUpwatch/releases"))) }
                         SettingsRow("Project and source code", "GitHub", Icons.Outlined.Code) { open(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/WardPearce/PocketUpwatch"))) }
                         SettingsRow("Report an issue", "Open the issue form on GitHub", Icons.Outlined.Feedback) { open(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/WardPearce/PocketUpwatch/issues/new"))) }
@@ -255,6 +258,10 @@ private val settingPages = listOf("Monitoring", "Notifications", "Appearance and
             } }
             state.message?.let { text -> Snackbar(action = { TextButton(onClick = { state.message = null }) { Text("Dismiss") } }, modifier = Modifier.padding(12.dp)) { Text(text) } }
         }
+    }
+    if (licenses) {
+        val notices = remember { listOf("OPEN-SOURCE.txt", "SORA-LICENSE.txt", "EPL-2.0.txt", "APACHE-2.0.txt", "REGEX-LICENSES.txt").joinToString("\n\n") { context.assets.open(it).bufferedReader().use { reader -> reader.readText() } } }
+        AlertDialog(onDismissRequest = { licenses = false }, title = { Text("Open-source licenses") }, text = { SelectionContainer { Text(notices, Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), style = MaterialTheme.typography.bodySmall) } }, confirmButton = { TextButton(onClick = { licenses = false }) { Text("Close") } })
     }
     val currentContent by rememberUpdatedState(settingsContent)
     val pageContent = remember { movableContentOf { currentContent() } }

@@ -184,6 +184,10 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
             onSaved(id)
         } catch (_: Exception) { error.value = "Couldn't save this monitor. Try again." }
     }
+    fun setMaintenance(id: Long, until: Long) = viewModelScope.launch {
+        try { dao.setMaintenance(id, until); MonitoringWidget.updateAll(getApplication(), id) }
+        catch (_: Exception) { error.value = "Couldn't update maintenance. Try again." }
+    }
     fun delete(service: ServiceEntry, done: () -> Unit) = viewModelScope.launch {
         try { dao.delete(service); MonitoringWidget.updateAll(getApplication(), service.id); done() } catch (_: Exception) { error.value = "Couldn't delete this monitor. Try again." }
     }
@@ -376,6 +380,17 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
             checkError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (!service.enabled) Text("Tests on paused monitors don't save history or send alerts.", style = MaterialTheme.typography.bodySmall)
             diagnostic?.let { Text("${if (it.up == null) "UNKNOWN" else if (it.up) "UP" else "DOWN"} · ${it.responseMs} ms · ${it.detail}") }
+        }
+        MaintenanceControls(service.maintenanceUntil, now) { vm.setMaintenance(service.id, it) }
+        if (service.bodyType != "None") DetailSection(Modifier.testTag("expected-response")) {
+            Text("Response check", style = MaterialTheme.typography.titleMedium)
+            if (service.jsonPath.isNotBlank() && service.bodyType == "JSON") Text("JSON path: ${service.jsonPath}", style = MaterialTheme.typography.bodySmall)
+            BodyEditor("Expected response", service.expectedBody, service.bodyType, readOnly = true)
+            Text(when (service.bodyType) {
+                "JSON", "YAML", "YML" -> "Compares values, ignoring formatting and key order."
+                "XML" -> if (service.xmlStructural) "Compares XML structure${if (service.xmlIgnoreWhitespace) "; ignores indentation" else "; whitespace is significant"}." else "Uses the original XML comparison."
+                else -> "Matches text exactly."
+            }, style = MaterialTheme.typography.bodySmall)
         }
         DetailSection(Modifier.testTag("service-target")) {
             Text("Target", style = MaterialTheme.typography.titleMedium)

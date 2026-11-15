@@ -12,7 +12,11 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
-internal class SecretStore {
+internal interface HeaderSecrets {
+    fun encrypt(headers: Map<String, String>): String
+    fun decrypt(value: String): Map<String, String>
+}
+internal class SecretStore : HeaderSecrets {
     private fun key(): SecretKey = synchronized(KEY_LOCK) {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (store.getKey("pocket-upwatch-headers", null) as? SecretKey)?.let { return it }
@@ -21,12 +25,12 @@ internal class SecretStore {
         }.generateKey()
     }
     companion object { private val KEY_LOCK = Any() }
-    @Synchronized fun encrypt(headers: Map<String, String>): String {
+    @Synchronized override fun encrypt(headers: Map<String, String>): String {
         if (headers.isEmpty()) return ""
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
         return Base64.encodeToString(cipher.iv + cipher.doFinal(Gson().toJson(headers).toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
     }
-    @Synchronized fun decrypt(value: String): Map<String, String> {
+    @Synchronized override fun decrypt(value: String): Map<String, String> {
         if (value.isBlank()) return emptyMap()
         val bytes = Base64.decode(value, Base64.NO_WRAP)
         require(bytes.size >= 28) { "Invalid encrypted credentials" }

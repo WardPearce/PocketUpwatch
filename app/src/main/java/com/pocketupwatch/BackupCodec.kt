@@ -31,7 +31,7 @@ internal object BackupCodec {
             monitors.add(value)
         }
         val plain = gson.toJson(JsonObject().apply {
-            addProperty("version", if (settings == null) 1 else 2)
+            addProperty("version", 3)
             add("monitors", monitors)
             settings?.let { add("settings", it.validate().json()) }
         })
@@ -68,7 +68,7 @@ internal object BackupCodec {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.DECRYPT_MODE, key(password, salt), GCMParameterSpec(128, iv)) }
             root = gson.fromJson(String(cipher.doFinal(Base64.getDecoder().decode(root.get("data").asString)), Charsets.UTF_8), JsonObject::class.java)
         }
-        require(root.get("version")?.asInt in listOf(1, 2)) { "Unsupported backup version" }
+        require(root.get("version")?.asInt in listOf(1, 2, 3)) { "Unsupported backup version" }
         val settings = root.getAsJsonObject("settings")?.let(AppSettings::fromJson)
         val monitors = root.getAsJsonArray("monitors") ?: error("Missing monitors")
         require(monitors.size() <= 1_000) { "Too many monitors" }
@@ -76,7 +76,7 @@ internal object BackupCodec {
             val obj = element.asJsonObject
             val service = gson.fromJson(obj, ServiceEntry::class.java)
             val headers = obj.getAsJsonObject("headers")?.entrySet()?.associate { it.key to it.value.asString } ?: emptyMap()
-            val restored = service.copy(id = 0, enabled = false, headersCiphertext = encrypt(headers), needsReview = obj.get("needsReview")?.asBoolean == true)
+            val restored = service.copy(bodyType = if (service.bodyType == "YML") "YAML" else service.bodyType, id = 0, enabled = false, headersCiphertext = encrypt(headers), needsReview = obj.get("needsReview")?.asBoolean == true)
             require(ServiceValidation.error(restored, headers, allowIncompleteBody = obj.get("needsReview")?.asBoolean == true) == null) { "Invalid monitor in backup" }
             restored
         }

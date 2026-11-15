@@ -29,7 +29,9 @@ data class ServiceEntry(
     @ColumnInfo(defaultValue = "30") val certificateWarnDays: Int = 30,
     @ColumnInfo(defaultValue = "''") val dnsExpected: String = "",
     @ColumnInfo(defaultValue = "''") val tags: String = "",
-    @ColumnInfo(defaultValue = "0") val needsReview: Boolean = false
+    @ColumnInfo(defaultValue = "0") val needsReview: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val xmlStructural: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val xmlIgnoreWhitespace: Boolean = false
 )
 @Entity(tableName = "checks", foreignKeys = [ForeignKey(entity = ServiceEntry::class, parentColumns = ["id"], childColumns = ["serviceId"], onDelete = ForeignKey.CASCADE)], indices = [Index("serviceId"), Index(value = ["serviceId", "time", "id"])])
 data class CheckEntry(@PrimaryKey(autoGenerate = true) val id: Long = 0, val serviceId: Long, val time: Long, val up: Boolean, val responseMs: Long, val detail: String, @ColumnInfo(defaultValue = "0") val skipped: Boolean = false)
@@ -56,6 +58,7 @@ data class HistoryPage(val checks: List<CheckEntry>, val total: Int, val page: I
     @Insert suspend fun add(service: ServiceEntry): Long
     @Delete suspend fun delete(service: ServiceEntry)
     @Update suspend fun update(service: ServiceEntry)
+    @Query("UPDATE services SET maintenanceUntil = :until WHERE id = :id") suspend fun setMaintenance(id: Long, until: Long)
     @Query("UPDATE services SET enabled = :enabled WHERE :enabled = 0 OR needsReview = 0") suspend fun setAllEnabled(enabled: Boolean)
     @Query("SELECT (SELECT COUNT(*) FROM checks) AS checks, (SELECT COUNT(*) FROM incidents) AS incidents, (SELECT COUNT(*) FROM hourly_stats) AS summaries, (SELECT MIN(time) FROM checks) AS oldest") fun storageStats(): Flow<StorageStats>
     @Query("SELECT COUNT(*) FROM checks WHERE time < :before AND id NOT IN (SELECT MAX(id) FROM checks GROUP BY serviceId)") suspend fun cleanupCount(before: Long): Long
@@ -126,10 +129,14 @@ data class HistoryPage(val checks: List<CheckEntry>, val total: Int, val page: I
     }
 }
 
-@Database(entities = [ServiceEntry::class, CheckEntry::class, AlertState::class, Incident::class, HourlyStats::class], version = 5, exportSchema = true)
+@Database(entities = [ServiceEntry::class, CheckEntry::class, AlertState::class, Incident::class, HourlyStats::class], version = 6, exportSchema = true)
 abstract class MonitorDb : RoomDatabase() {
     abstract fun dao(): MonitorDao
     companion object {
+        val MIGRATION_5_6 = object : Migration(5, 6) { override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE services ADD COLUMN xmlStructural INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE services ADD COLUMN xmlIgnoreWhitespace INTEGER NOT NULL DEFAULT 0")
+        } }
         val MIGRATION_4_5 = object : Migration(4, 5) { override fun migrate(db: SupportSQLiteDatabase) { db.execSQL("ALTER TABLE services ADD COLUMN needsReview INTEGER NOT NULL DEFAULT 0") } }
         val MIGRATION_1_2 = object : Migration(1, 2) { override fun migrate(db: SupportSQLiteDatabase) { db.execSQL("ALTER TABLE services ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1"); db.execSQL("ALTER TABLE services ADD COLUMN expectedCode INTEGER NOT NULL DEFAULT 0"); db.execSQL("ALTER TABLE services ADD COLUMN bodyType TEXT NOT NULL DEFAULT 'None'"); db.execSQL("ALTER TABLE services ADD COLUMN expectedBody TEXT NOT NULL DEFAULT ''") } }
         val MIGRATION_2_3 = object : Migration(2, 3) { override fun migrate(db: SupportSQLiteDatabase) { db.execSQL("UPDATE services SET intervalSeconds = 300 WHERE intervalSeconds < 300") } }
@@ -151,6 +158,6 @@ abstract class MonitorDb : RoomDatabase() {
             }
         }
         @Volatile private var instance: MonitorDb? = null
-        fun get(context: Context): MonitorDb = instance ?: synchronized(this) { instance ?: Room.databaseBuilder(context.applicationContext, MonitorDb::class.java, "monitor.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).addCallback(MINIMUM_INTERVAL_CALLBACK).build().also { instance = it } }
+        fun get(context: Context): MonitorDb = instance ?: synchronized(this) { instance ?: Room.databaseBuilder(context.applicationContext, MonitorDb::class.java, "monitor.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).addCallback(MINIMUM_INTERVAL_CALLBACK).build().also { instance = it } }
     }
 }

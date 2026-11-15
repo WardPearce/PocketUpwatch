@@ -24,6 +24,8 @@ Pocket Upwatch checks whether your services are reachable, tracks how they respo
 - **Check on your schedule.** Choose intervals from 5 minutes to 24 hours, test a service immediately, or pause individual monitors or the whole list.
 - **Monitor your home network.** Check local servers and devices, including networks without Internet access.
 - **Go beyond a connection check.** Check for an expected website or API response, use authentication, and get certificate-expiry warnings.
+- **Write response checks comfortably.** Edit JSON, YAML/YML, XML, or plain text with syntax highlighting, line numbers, undo/redo, and a larger editor. Validate or preview formatting before applying it. JSON and YAML checks ignore formatting and key order; XML offers an optional indentation rule.
+- **Manage requests easily.** Add and remove headers individually, and start or end maintenance right from a service page.
 - **Keep useful shortcuts nearby.** Add home-screen widgets for an overview or an individual service, and pause or resume monitoring from Quick Settings.
 - **Use the extra space.** Tablets and unfolded foldables show the monitor list beside service details, with a settings sidebar and wider forms and charts. Narrow windows keep the familiar phone layout.
 - **Make it yours.** Choose light, dark, or system theme, compact or comfortable lists, time displays, and defaults for new monitors.
@@ -51,11 +53,17 @@ Dark-mode app previews with sample monitors and data. Select an image to view it
 | :---: | :---: | :---: |
 | <a href="previews/settings-dark.png"><img src="previews/settings-dark.png" alt="Dark-mode settings organized into monitoring, notifications, appearance, storage, backups, and help" width="240" /></a> | <a href="previews/backup-dark.png"><img src="previews/backup-dark.png" alt="Dark-mode backup page with encrypted backup, redacted template, and import options" width="240" /></a> | <a href="previews/notifications-dark.png"><img src="previews/notifications-dark.png" alt="Dark-mode notification settings with a test alert, snooze, and a quiet-hours schedule" width="240" /></a> |
 
+| Response editor | Custom headers |
+| :---: | :---: |
+| <a href="previews/phone-response-editor-dark.png"><img src="previews/phone-response-editor-dark.png" alt="Response checks with Sora highlighting, formatting and validation" width="280" /></a> | <a href="previews/custom-headers-dark.png"><img src="previews/custom-headers-dark.png" alt="Editable custom header rows with reveal and delete controls" width="280" /></a> |
+
 ### Tablets and foldables
 
 | Monitor workspace | Settings sidebar |
 | :---: | :---: |
 | <a href="previews/tablet-overview-dark.png"><img src="previews/tablet-overview-dark.png" alt="Tablet workspace with a monitor list beside service status, schedule, availability, and response-time charts" width="400" /></a> | <a href="previews/tablet-settings-dark.png"><img src="previews/tablet-settings-dark.png" alt="Tablet settings with categories beside the backup and restore page" width="400" /></a> |
+
+[Expected response on a tablet](previews/tablet-expected-response-dark.png) · [Maintenance controls](previews/maintenance-dark.png)
 
 More views: [tablet editor](previews/tablet-editor-dark.png) · [portrait tablet](previews/tablet-portrait-dark.png) · [unfolded foldable](previews/foldable-unfolded-dark.png) · [tabletop fold](previews/foldable-tabletop-dark.png).
 

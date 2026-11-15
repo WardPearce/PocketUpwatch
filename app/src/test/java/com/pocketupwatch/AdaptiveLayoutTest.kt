@@ -31,6 +31,7 @@ class AdaptiveLayoutTest {
     private val app = ApplicationProvider.getApplicationContext<Application>()
     private val db = Room.inMemoryDatabaseBuilder(app, MonitorDb::class.java).allowMainThreadQueries().build()
     private val vm = MonitorViewModel(app, db.dao())
+    private var showing by mutableStateOf(true)
     private var width by mutableStateOf(1280.dp)
     private var viewportHeight by mutableStateOf<Dp?>(null)
     private var fold by mutableStateOf<DisplayFold?>(null)
@@ -55,17 +56,27 @@ class AdaptiveLayoutTest {
             up = service.id != 5L, responseMs = if (service.id == 5L) 410 else 124, detail = if (service.id == 5L) "HTTP 503" else "Check passed")) }
         MonitorService.active.value = true
     }
-    @After fun close() { MonitorService.active.value = false; db.close(); AppSettings.prefs(app).edit().clear().commit() }
+    @After fun close() { compose.runOnIdle { showing = false }; compose.waitForIdle(); MonitorService.active.value = false; db.close(); AppSettings.prefs(app).edit().clear().commit() }
     private fun show() {
         compose.setContent {
             view = LocalView.current
-            MaterialTheme(colorScheme = darkColorScheme()) {
+            if (showing) MaterialTheme(colorScheme = darkColorScheme()) {
                 CompositionLocalProvider(LocalFoldOverride provides fold) {
                     Box(Modifier.width(width).then(viewportHeight?.let { Modifier.height(it) } ?: Modifier.fillMaxHeight())) { App(0, 0, "Dark", {}, vm) }
                 }
             }
         }
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Overview", substring = false).fetchSemanticsNodes().isNotEmpty() }
+    }
+    @Test fun tabletResponseCheckPreview() {
+        runBlocking { db.dao().update(monitors[0].copy(bodyType = "YAML", expectedBody = "status: ready\nchecks:\n  database: true\n  cache: true\nversion: 3")) }
+        show()
+        choose(monitors[0].id)
+        compose.onNodeWithTag("expected-response").performScrollTo()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Expected response").fetchSemanticsNodes().isNotEmpty() }
+        // Wait for asynchronous syntax analysis before drawing the native Android view.
+        compose.runOnIdle { }
+        screenshot("tablet-expected-response-dark")
     }
     @Test fun tabletKeepsListAndDetailsVisibleAndSelectionWorks() {
         show()
