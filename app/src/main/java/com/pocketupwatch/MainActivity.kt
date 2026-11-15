@@ -144,7 +144,8 @@ class MainActivity : ComponentActivity() {
     )
     val advance: () -> Unit = { if (step < 2) step++ else onComplete() }
     Scaffold { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
+        Column(Modifier.widthIn(max = if (LocalAdaptiveWindow.current.tablet) 600.dp else androidx.compose.ui.unit.Dp.Infinity).fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Text("Set up Pocket Upwatch", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text("Step ${step + 1} of 3", style = MaterialTheme.typography.labelLarge)
             LinearProgressIndicator(progress = { (step + 1) / 3f }, modifier = Modifier.fillMaxWidth())
@@ -167,6 +168,7 @@ class MainActivity : ComponentActivity() {
                 if (step > 0) AppSecondaryButton(onClick = { step-- }, modifier = Modifier.weight(1f).fillMaxHeight()) { Text("Back") }
                 AppButton(onClick = advance, modifier = Modifier.weight(1f).fillMaxHeight()) { Text(if (step == 2) "Finish" else "Continue") }
             }
+        }
         }
     }
 }
@@ -205,8 +207,12 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
     return now
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable fun App(requestedServiceId: Long, navigationRequest: Int, mode: String, onMode: (String) -> Unit, vm: MonitorViewModel = viewModel(), settingsRequest: String? = null) {
+    AdaptiveRoot { AppContent(requestedServiceId, navigationRequest, mode, onMode, vm, settingsRequest) }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable private fun AppContent(requestedServiceId: Long, navigationRequest: Int, mode: String, onMode: (String) -> Unit, vm: MonitorViewModel = viewModel(), settingsRequest: String? = null) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val loaded by vm.services.collectAsStateWithLifecycle(initialValue = null)
     val services = loaded.orEmpty()
@@ -246,26 +252,64 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
     BackHandler(canNavigateBack) {
         when { editor -> { adding = false; editingId = 0 }; tools -> tools = false; else -> selectedId = 0 }
     }
+    val window = LocalAdaptiveWindow.current
+    val paneSelection = selected ?: services.firstOrNull().takeIf { window.workspace && !tools && !editor }
+    val dashboardBody: @Composable () -> Unit = {
+        val diagnostics = BackgroundDiagnostics.prefs(context)
+        val health = backgroundHealth(services, latestById, active, now,
+            diagnostics.getLong("last_result", 0), diagnostics.getLong("last_error_time", 0), diagnostics.getString("last_error", null),
+            AppNotifications.allowed(context, "alerts"), CheckAlarm.canScheduleExact(context))
+        dashboardState.SaveableStateProvider("dashboard") {
+            MonitorDashboard(services, latestById, alertById, active, now, health, Modifier,
+                onDiagnostics = { settingsPage = "Monitoring"; tools = true }, onSetAll = { vm.setAll(it) },
+                onToggle = { service, enabled -> vm.save(service.copy(enabled = enabled)) }, onSelect = { selectedId = it.id },
+                selectedId = paneSelection?.id.takeIf { window.workspace })
+        }
+    }
+    val latestDashboard by rememberUpdatedState(dashboardBody)
+    val dashboardPane = remember { movableContentOf { latestDashboard() } }
+    val editorPane = remember(vm) { movableContentOf<ServiceEntry?> { item ->
+        ServiceEditor(item, onCancel = { adding = false; editingId = 0 }) { service ->
+            vm.save(service) { id -> adding = false; editingId = 0; selectedId = id }.join()
+        }
+    } }
+    val detailPane = remember(vm) { movableContentOf<ServiceEntry> { item ->
+        Detail(item, vm, Modifier, onEdit = { editingId = it.id }, onDeleted = { selectedId = 0 })
+    } }
+    var navigationLocked by remember { mutableStateOf(false) }
+    val settingsBody: @Composable () -> Unit = {
+        LibraryTools(vm, mode, onMode, Modifier, onExit = { tools = false }, initialPage = settingsPage, entryRequest = navigationRequest, onLock = { navigationLocked = it })
+    }
+    val latestSettings by rememberUpdatedState(settingsBody)
+    val settingsPane = remember { movableContentOf { latestSettings() } }
     Scaffold(contentWindowInsets = if (tools) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets, topBar = {
-        if (!tools) AppTopBar(title = when { editor -> if (adding) "Add monitor" else "Edit monitor"; tools -> "Settings"; selected != null -> selected.name; else -> "Pocket Upwatch" },
-            onBack = if (canNavigateBack) ({ when { editor -> { adding = false; editingId = 0 }; tools -> tools = false; else -> selectedId = 0 } }) else null,
-            actions = { if (!canNavigateBack) AppIconButton(onClick = { settingsPage = "Settings"; tools = true }, modifier = Modifier.padding(end = 8.dp)) { Icon(Icons.Default.Settings, "Settings") } })
+        if (!tools) AppTopBar(title = if (window.tablet && !editor) "Pocket Upwatch" else when { editor -> if (adding) "Add monitor" else "Edit monitor"; selected != null -> selected.name; else -> "Pocket Upwatch" },
+            onBack = if (canNavigateBack && (!window.tablet || editor)) ({ when { editor -> { adding = false; editingId = 0 }; tools -> tools = false; else -> selectedId = 0 } }) else null,
+            actions = {
+                if (window.tablet && !editor) AppButton(onClick = { adding = true }, modifier = Modifier.padding(end = 16.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("Add monitor") }
+                if (!window.tablet && !canNavigateBack) AppIconButton(onClick = { settingsPage = "Settings"; tools = true }, modifier = Modifier.padding(end = 8.dp)) { Icon(Icons.Default.Settings, "Settings") }
+            })
     }, floatingActionButton = {
-        if (!canNavigateBack) ExtendedFloatingActionButton(onClick = { adding = true }, shape = RoundedCornerShape(8.dp), icon = { Icon(Icons.Default.Add, null) }, text = { Text("Add monitor") })
+        if (!window.tablet && !canNavigateBack) ExtendedFloatingActionButton(onClick = { adding = true }, shape = RoundedCornerShape(8.dp), icon = { Icon(Icons.Default.Add, null) }, text = { Text("Add monitor") })
     }) { padding ->
-        when {
-            editor -> ServiceEditor(editing, Modifier.padding(padding), onCancel = { adding = false; editingId = 0 }) { service -> vm.save(service) { id -> adding = false; editingId = 0; selectedId = id }.join() }
-            tools -> LibraryTools(vm, mode, onMode, Modifier.padding(padding), onExit = { tools = false }, initialPage = settingsPage, entryRequest = navigationRequest)
-            selected != null -> Detail(selected, vm, Modifier.padding(padding), onEdit = { editingId = it.id }, onDeleted = { selectedId = 0 })
-            else -> {
-                val diagnostics = BackgroundDiagnostics.prefs(context)
-                val health = backgroundHealth(services, latestById, active, now,
-                    diagnostics.getLong("last_result", 0), diagnostics.getLong("last_error_time", 0), diagnostics.getString("last_error", null),
-                    AppNotifications.allowed(context, "alerts"), CheckAlarm.canScheduleExact(context))
-                dashboardState.SaveableStateProvider("dashboard") {
-                    MonitorDashboard(services, latestById, alertById, active, now, health, Modifier.padding(padding),
-                        onDiagnostics = { settingsPage = "Monitoring"; tools = true }, onSetAll = { vm.setAll(it) },
-                        onToggle = { service, enabled -> vm.save(service.copy(enabled = enabled)) }, onSelect = { selectedId = it.id })
+        Row(Modifier.padding(padding).fillMaxSize()) {
+            if (window.tablet) NavigationRail(Modifier.width(80.dp).fillMaxHeight().testTag("tablet-navigation")) {
+                NavigationRailItem(selected = !tools, onClick = { tools = false }, enabled = !editor && !navigationLocked, icon = { Icon(Icons.Default.MonitorHeart, null) }, label = { Text("Monitors") })
+                NavigationRailItem(selected = tools, onClick = { settingsPage = "Settings"; tools = true }, enabled = !editor && !navigationLocked, icon = { Icon(Icons.Default.Settings, null) }, label = { Text("Settings") })
+            }
+            Box(Modifier.weight(1f).fillMaxHeight()) {
+                when {
+                    tools -> settingsPane()
+                    window.workspace && (editor || paneSelection != null) -> AdaptivePanes(primaryWidth = (window.width * .30f).coerceIn(240.dp, 360.dp), primary = { dashboardPane() }, secondary = {
+                        if (editor) editorPane(editing)
+                        else paneSelection?.let { item -> Column(Modifier.fillMaxSize()) {
+                            Text(item.name, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp).testTag("detail-title"))
+                            Box(Modifier.weight(1f)) { detailPane(item) }
+                        } }
+                    })
+                    editor -> editorPane(editing)
+                    selected != null -> detailPane(selected)
+                    else -> dashboardPane()
                 }
             }
         }
@@ -298,7 +342,7 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
     var diagnostic by remember { mutableStateOf<ProbeResult?>(null) }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    AdaptiveSections(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         DetailSection(Modifier.testTag("service-status")) {
             Text("Status", style = MaterialTheme.typography.titleMedium)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {

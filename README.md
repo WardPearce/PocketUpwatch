@@ -4,7 +4,7 @@
 
 <h1 align="center">Pocket Upwatch</h1>
 
-<p align="center">Keep an eye on your websites, APIs, and home servers from your Android phone.</p>
+<p align="center">Keep an eye on your websites, APIs, and home servers from your Android device.</p>
 
 <p align="center">
   <a href="https://github.com/WardPearce/PocketUpwatch/releases/latest">Download for Android</a> ·
@@ -12,7 +12,7 @@
   <a href="CHANGELOG.md">What's new</a>
 </p>
 
-Pocket Upwatch checks whether your services are reachable, tracks how they respond, and alerts you when something goes down or recovers. No account or hosted monitoring service is required. Your monitors and history stay on your phone unless you choose to export them.
+Pocket Upwatch checks whether your services are reachable, tracks how they respond, and alerts you when something goes down or recovers. No account or hosted monitoring service is required. Your monitors and history stay on your device unless you choose to export them.
 
 **Requires Android 8.0 or newer.**
 
@@ -25,6 +25,7 @@ Pocket Upwatch checks whether your services are reachable, tracks how they respo
 - **Monitor your home network.** Check local servers and devices, including networks without Internet access.
 - **Go beyond a connection check.** Check for an expected website or API response, use authentication, and get certificate-expiry warnings.
 - **Keep useful shortcuts nearby.** Add home-screen widgets for an overview or an individual service, and pause or resume monitoring from Quick Settings.
+- **Use the extra space.** Tablets and unfolded foldables show the monitor list beside service details, with a settings sidebar and wider forms and charts. Narrow windows keep the familiar phone layout.
 - **Make it yours.** Choose light, dark, or system theme, compact or comfortable lists, time displays, and defaults for new monitors.
 - **Back up and share.** Create password-protected backups, export templates with private fields removed, review imports, and export check or incident history as CSV. Optional reminders help you keep backups current.
 
@@ -50,6 +51,14 @@ Dark-mode app previews with sample monitors and data. Select an image to view it
 | :---: | :---: | :---: |
 | <a href="previews/settings-dark.png"><img src="previews/settings-dark.png" alt="Dark-mode settings organized into monitoring, notifications, appearance, storage, backups, and help" width="240" /></a> | <a href="previews/backup-dark.png"><img src="previews/backup-dark.png" alt="Dark-mode backup page with encrypted backup, redacted template, and import options" width="240" /></a> | <a href="previews/notifications-dark.png"><img src="previews/notifications-dark.png" alt="Dark-mode notification settings with a test alert, snooze, and a quiet-hours schedule" width="240" /></a> |
 
+### Tablets and foldables
+
+| Monitor workspace | Settings sidebar |
+| :---: | :---: |
+| <a href="previews/tablet-overview-dark.png"><img src="previews/tablet-overview-dark.png" alt="Tablet workspace with a monitor list beside service status, schedule, availability, and response-time charts" width="400" /></a> | <a href="previews/tablet-settings-dark.png"><img src="previews/tablet-settings-dark.png" alt="Tablet settings with categories beside the backup and restore page" width="400" /></a> |
+
+More views: [tablet editor](previews/tablet-editor-dark.png) · [portrait tablet](previews/tablet-portrait-dark.png) · [unfolded foldable](previews/foldable-unfolded-dark.png) · [tabletop fold](previews/foldable-tabletop-dark.png).
+
 ## Get started
 
 1. Download the APK from [Releases](https://github.com/WardPearce/PocketUpwatch/releases/latest) and install it on your Android device.
@@ -63,7 +72,7 @@ For a local service without Internet access, turn off **Require Internet** in it
 
 Configuration and history are stored on your device. Saved authentication headers and credentials are encrypted on the device. Encrypted backups can include credentials and app preferences; templates leave out private fields but still show monitor names, hosts, and paths, so review them before sharing.
 
-Checks run from your phone and use its network connection. Android may delay them, especially when battery restrictions apply. Missing or skipped checks are shown as unknown, and availability percentages describe completed checks rather than guaranteed continuous uptime.
+Checks run from your device and use its network connection. Android may delay them, especially when battery restrictions apply. Missing or skipped checks are shown as unknown, and availability percentages describe completed checks rather than guaranteed continuous uptime.
 
 In **Settings**, you can check background monitoring health, test alerts, choose how long to keep history, and clean up old checks.
 

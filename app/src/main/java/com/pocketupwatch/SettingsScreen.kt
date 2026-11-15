@@ -50,7 +50,7 @@ private val settingPages = listOf("Monitoring", "Notifications", "Appearance and
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun LibraryTools(
     vm: MonitorViewModel, mode: String, onMode: (String) -> Unit, modifier: Modifier,
-    onExit: () -> Unit = {}, initialPage: String = "Settings", model: SettingsViewModel? = null, entryRequest: Int = 0
+    onExit: () -> Unit = {}, initialPage: String = "Settings", model: SettingsViewModel? = null, entryRequest: Int = 0, onLock: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     val state = model ?: viewModel<SettingsViewModel>(key = "settings", factory = remember(vm) {
@@ -58,6 +58,8 @@ private val settingPages = listOf("Monitoring", "Notifications", "Appearance and
             @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = SettingsViewModel(context.applicationContext as Application, vm.dao) as T
         }
     })
+    SideEffect { onLock(state.locked) }
+    DisposableEffect(Unit) { onDispose { onLock(false) } }
     val settings = rememberAppSettings()
     val prefs = remember { AppSettings.prefs(context) }
     val now = rememberNow()
@@ -79,6 +81,7 @@ private val settingPages = listOf("Monitoring", "Notifications", "Appearance and
             previousRequest = entryRequest
         }
     }
+    val wide = LocalAdaptiveWindow.current.workspace
     var setup by rememberSaveable { mutableStateOf(false) }
     var encryptForm by rememberSaveable { mutableStateOf(false) }
     var password by remember { mutableStateOf("") }
@@ -91,7 +94,7 @@ private val settingPages = listOf("Monitoring", "Notifications", "Appearance and
             state.bundle != null || state.passwordNeeded -> state.cancelImport()
             encryptForm -> { encryptForm = false; password = ""; confirmation = "" }
             setup -> setup = false
-            else -> if (page == initialPage && initialPage != "Settings") onExit() else page = "Settings"
+            else -> if (wide || page == initialPage && initialPage != "Settings") onExit() else page = "Settings"
         }
     }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { state.writeExport(it) }
@@ -117,34 +120,26 @@ private val settingPages = listOf("Monitoring", "Notifications", "Appearance and
     // Re-read Android channel state after returning from its settings page and while this screen is visible.
     val alertState = remember(now, refresh) { AppNotifications.state(context, "alerts") }
     val monitorState = remember(now, refresh) { AppNotifications.state(context, "monitor") }
+    val displayPage = if (wide && page == "Settings") "Monitoring" else page
+    val categories: @Composable () -> Unit = {
+        val icons = listOf(Icons.Outlined.MonitorHeart, Icons.Outlined.Notifications, Icons.Outlined.Palette, Icons.Outlined.Storage, Icons.Outlined.Backup, Icons.AutoMirrored.Outlined.HelpOutline)
+        val summaries = listOf(if (active) "Running · last check ${if (result == 0L) "pending" else relativeCheckAge(result, now)}" else "Paused or stopped",
+            "Service alerts: $alertState", "${settings.theme} theme", "Checks kept for ${settings.retentionDays} days",
+            "Last backup: ${settingsTime(prefs.getLong("last_backup", 0))}", "Version ${BuildConfig.VERSION_NAME}")
+        settingPages.forEachIndexed { index, name ->
+            SettingsRow(name, summaries[index], icons[index], enabled = !state.locked, highlighted = wide && name == displayPage) { page = name; state.message = null }
+            if (index < settingPages.lastIndex) HorizontalDivider()
+        }
+    }
     if (setup) { Onboarding { setup = false }; return }
-    Scaffold(modifier, topBar = {
-        AppTopBar(if (state.bundle != null && page == "Backup and restore") "Review import" else page, onBack = {
-            when {
-                state.locked -> Unit
-                state.bundle != null || state.passwordNeeded -> state.cancelImport()
-                encryptForm -> { encryptForm = false; password = ""; confirmation = "" }
-                page == "Settings" -> onExit()
-                else -> if (page == initialPage && initialPage != "Settings") onExit() else page = "Settings"
-            }
-        })
-    }) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
+    val settingsContent: @Composable () -> Unit = {
+        Column(Modifier.fillMaxSize()) {
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth().testTag("settings-busy"))
-            if (page == "Backup and restore" && state.bundle != null) {
+            if (displayPage == "Backup and restore" && state.bundle != null) {
                 ImportReview(state, Modifier.weight(1f))
-            } else key(page) { Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                when (page) {
-                    "Settings" -> {
-                        val icons = listOf(Icons.Outlined.MonitorHeart, Icons.Outlined.Notifications, Icons.Outlined.Palette, Icons.Outlined.Storage, Icons.Outlined.Backup, Icons.AutoMirrored.Outlined.HelpOutline)
-                        val summaries = listOf(if (active) "Running · last check ${if (result == 0L) "pending" else relativeCheckAge(result, now)}" else "Paused or stopped",
-                            "Service alerts: $alertState", "${settings.theme} theme", "Checks kept for ${settings.retentionDays} days",
-                            "Last backup: ${settingsTime(prefs.getLong("last_backup", 0))}", "Version ${BuildConfig.VERSION_NAME}")
-                        settingPages.forEachIndexed { index, name ->
-                            SettingsRow(name, summaries[index], icons[index]) { page = name; state.message = null }
-                            if (index < settingPages.lastIndex) HorizontalDivider()
-                        }
-                    }
+            } else key(displayPage) { Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                when (displayPage) {
+                    "Settings" -> { categories() }
                     "Monitoring" -> {
                         SettingsHeading("Background monitoring")
                         Text(if (active) "Monitoring is running." else "Monitoring is paused or stopped.")
@@ -261,6 +256,30 @@ private val settingPages = listOf("Monitoring", "Notifications", "Appearance and
             state.message?.let { text -> Snackbar(action = { TextButton(onClick = { state.message = null }) { Text("Dismiss") } }, modifier = Modifier.padding(12.dp)) { Text(text) } }
         }
     }
+    val currentContent by rememberUpdatedState(settingsContent)
+    val pageContent = remember { movableContentOf { currentContent() } }
+    Scaffold(modifier, topBar = {
+        AppTopBar(if (state.bundle != null && displayPage == "Backup and restore") "Review import" else if (wide) "Settings" else page, onBack = {
+            when {
+                state.locked -> Unit
+                state.bundle != null || state.passwordNeeded -> state.cancelImport()
+                encryptForm -> { encryptForm = false; password = ""; confirmation = "" }
+                wide || page == "Settings" -> onExit()
+                else -> if (page == initialPage && initialPage != "Settings") onExit() else page = "Settings"
+            }
+        })
+    }) { padding ->
+        Box(Modifier.padding(padding).fillMaxSize()) {
+            if (wide) AdaptivePanes(primaryWidth = 280.dp, primary = {
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { categories() }
+            }, secondary = {
+                Column(Modifier.fillMaxSize()) {
+                    Text(if (state.bundle != null) "Review import" else displayPage, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(16.dp).testTag("settings-page-title"))
+                    Box(Modifier.weight(1f)) { pageContent() }
+                }
+            }) else pageContent()
+        }
+    }
     state.cleanupPreview?.let { count -> AlertDialog(onDismissRequest = { state.cancelCleanup() }, title = { Text("Remove $count old checks?") },
         text = { Text("Keeps each monitor's latest check. Hourly summaries older than a year are also removed. Incidents are kept. Deleted checks can't be restored, and file size may not shrink right away.") },
         confirmButton = { AppButton(onClick = { state.cleanUp() }, enabled = !state.locked) { Text("Clean up") } },
@@ -303,8 +322,8 @@ private val settingPages = listOf("Monitoring", "Notifications", "Appearance and
 }
 
 @Composable private fun SettingsHeading(text: String) { Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() }) }
-@Composable private fun SettingsRow(title: String, summary: String, icon: ImageVector? = null, enabled: Boolean = true, onClick: (() -> Unit)? = null) {
-    ListItem(headlineContent = { Text(title) }, supportingContent = if (summary.isNotEmpty()) ({ Text(summary) }) else null,
+@Composable private fun SettingsRow(title: String, summary: String, icon: ImageVector? = null, enabled: Boolean = true, highlighted: Boolean = false, onClick: (() -> Unit)? = null) {
+    ListItem(colors = ListItemDefaults.colors(containerColor = if (highlighted) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface), headlineContent = { Text(title) }, supportingContent = if (summary.isNotEmpty()) ({ Text(summary) }) else null,
         leadingContent = icon?.let { { Icon(it, null) } }, trailingContent = onClick?.let { { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) } },
         modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).then(if (onClick == null) Modifier else Modifier.clickable(enabled = enabled, onClick = onClick)))
 }

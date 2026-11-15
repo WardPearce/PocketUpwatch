@@ -106,9 +106,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
     val scroll = rememberScrollState()
     val bodyValidation = remember(bodyType, expectedBody, jsonPath) { BodyMatcher.validate(bodyType, expectedBody, jsonPath) }
     Column(modifier.fillMaxSize().imePadding()) {
-        Column(
+        AdaptiveSections(
             Modifier.weight(1f).verticalScroll(scroll).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            spacing = 16.dp, pairedRows = true
         ) {
             EditorSection("Service details", "Name and address", Icons.Outlined.Dns) {
                 OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Name") }, placeholder = { Text("e.g. Production API") }, singleLine = true)

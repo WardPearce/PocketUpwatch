@@ -2,6 +2,9 @@
 
 ## 0.1.10
 
+- Add tablet and unfolded-foldable workspaces with a navigation rail, monitor list/detail panes, a settings sidebar, and multi-column forms and cards. Preserve phone layouts and in-memory editing/filter/chart state through resizing, and keep panes clear of separating hinges.
+- Cache both Robolectric runtimes with Gradle via Google's Maven Central mirror and run tests with offline runtime resolution, avoiding the HTTP 429 failures in CI.
+
 - Organize Settings into six pages with current-value summaries, live background diagnostics, resolved-error labels, and direct permission/channel links.
 - Separate encrypted backups and redacted templates; add password confirmation/reveal, file-first import, selectable previews, similar-address warnings, guarded transactions, and activity-recreation recovery.
 - Preserve imported template review requirements in database version 5; prevent individual and bulk starts until reviewed in the editor. Keep existing version 1 backups compatible and optionally include portable app preferences in version 2 backups.

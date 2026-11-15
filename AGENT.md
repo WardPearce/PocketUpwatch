@@ -71,6 +71,14 @@ Prepared files and import previews survive activity recreation in memory. If And
 
 Encrypted backups with preferences use payload version 2; version 1 monitor-only files remain supported. History, widget IDs, Android permission grants, snooze state, and last-backup timestamps remain local. Device-specific Keystore ciphertext is never exported as a portable credential. Android automatic backup is disabled.
 
+## Adaptive layouts
+
+The main UI retains its phone presentation for windows narrower than 600 dp or shorter than 600 dp, including ordinary phone landscape. Tablets and unfolded inner displays use a navigation rail. At 672 dp wide, the monitor list and service details/editor share a workspace, and settings shows categories beside the selected page. Forms and detail cards use two columns when their pane has at least 720 dp of content width. Permission setup is constrained to a readable width on tablets.
+
+`AdaptiveRoot` observes current Compose constraints and AndroidX WindowManager folding features. Window height comes from current window metrics so opening the keyboard does not change the tablet into a phone layout. Separating/occluding hinges are translated from window coordinates into each pane container; vertical hinges separate panes left/right, and horizontal tabletop folds separate them top/bottom. Folding into a narrow window restores the existing phone navigation. The activity handles smallest-window-size and density configuration changes during folding without recreation. Movable content preserves filters, selected chart periods and unsaved editor fields, including in-memory credentials, as panes move.
+
+Native tests cover portrait/landscape tablets, narrow windows, folding/refolding with unsaved data, keyboard-sized viewports, selection, settings navigation and both hinge orientations. Test folding features are simulated; physical folding hardware, IME/inset combinations and OEM behavior still need device validation. Dark previews are committed under `previews/`.
+
 ## Development and tests
 
 Open with Android Studio, SDK 35, and JDK 17. Alternatively set `ANDROID_HOME` to an installed SDK, then run:
@@ -79,7 +87,7 @@ Open with Android Studio, SDK 35, and JDK 17. Alternatively set `ANDROID_HOME` t
 ./gradlew testDebugUnitTest lintDebug assembleDebug
 ```
 
-The debug APK is `app/build/outputs/apk/debug/app-debug.apk`. Unit tests cover JSON/XML matching, paths, alert thresholds, unknown state, scheduling, timing under concurrency, HTTP behavior against MockWebServer, backups, CSV safety, period queries, and migration chains from database versions 1 through 4. Robolectric tests exercise Room, the editor, settings navigation, backup/import state and file errors, defaults, quiet hours, cleanup, and idle-service shutdown. Tests download Robolectric's Android runtime from Maven Central. Native Robolectric rendering also produces light/dark editor, dashboard, and settings previews under `app/build/outputs/editor-preview`; CI includes them in the validation artifact. Exported Room schemas are committed under `app/schemas`.
+The debug APK is `app/build/outputs/apk/debug/app-debug.apk`. Unit tests cover JSON/XML matching, paths, alert thresholds, unknown state, scheduling, timing under concurrency, HTTP behavior against MockWebServer, backups, CSV safety, period queries, and migration chains from database versions 1 through 4. Robolectric tests exercise Room, the editor, settings navigation, backup/import state and file errors, defaults, quiet hours, cleanup, and idle-service shutdown. Gradle resolves API 28 and API 35 Robolectric runtimes through Google's Maven Central mirror into its dependency cache, then `prepareRobolectricSdk` copies both into `app/build/robolectric-sdk`. Tests use Robolectric's offline resolver to avoid runtime/checksum downloads and Maven Central rate-limit failures. Keep the two runtime versions in separate configurations so Gradle does not replace the older one through version conflict resolution. Native Robolectric rendering also produces light/dark editor, dashboard, and settings previews under `app/build/outputs/editor-preview`; CI includes them in the validation artifact. Exported Room schemas are committed under `app/schemas`.
 
 Pull requests run tests, Android lint, and the debug build without signing secrets. The release workflow calls the same checks before building a signed APK. Physical-device validation of Doze, reboot, OEM battery restrictions, widgets, and Quick Settings is still recommended before distribution.
 
