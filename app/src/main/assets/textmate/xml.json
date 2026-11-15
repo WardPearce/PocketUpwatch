@@ -1,0 +1,50 @@
+{
+  "name": "XML",
+  "scopeName": "text.xml",
+  "patterns": [
+    {
+      "name": "comment.block",
+      "begin": "<!--",
+      "end": "-->"
+    },
+    {
+      "name": "string.unquoted.cdata",
+      "begin": "<!\\[CDATA\\[",
+      "end": "\\]\\]>"
+    },
+    {
+      "begin": "</?",
+      "end": "/?>",
+      "patterns": [
+        {
+          "name": "entity.name.tag",
+          "match": "(?<=[</])[\\w:.-]+"
+        },
+        {
+          "name": "entity.other.attribute-name",
+          "match": "[\\w:.-]+(?=\\s*=)"
+        },
+        {
+          "name": "string.quoted.double",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape",
+              "match": "\\\\(?:[\"\\\\/bfnrt]|u[0-9a-fA-F]{4})"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single",
+          "begin": "'",
+          "end": "'"
+        }
+      ]
+    },
+    {
+      "name": "constant.character.entity",
+      "match": "&[\\w#]+;"
+    }
+  ]
+}

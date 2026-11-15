@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.11
+
+- Edit request and expected bodies with Sora: JSON, YAML and XML highlighting, line numbers, validation, undo/redo, and an expanded editor. Preview formatting before applying it.
+- Match YAML/YML responses by value. JSON and YAML comparisons ignore formatting and key order while preserving types, array order, and number precision.
+- Choose structural XML comparison and optional indentation handling. Existing XML monitors keep their original comparison until changed.
+- View syntax-highlighted expected responses on the service page.
+- Start or end maintenance from the service page, with 1, 4 and 24-hour windows. Maintenance no longer appears in the add/edit form.
+- Add, edit, reveal and delete custom headers as individual rows.
+- Update portable backups to retain the new response options; older backups remain supported.
+- Add open-source notices in Help and about.
+
 ## 0.1.10
 
 - Add tablet and unfolded-foldable workspaces with a navigation rail, monitor list/detail panes, a settings sidebar, and multi-column forms and cards. Preserve phone layouts and in-memory editing/filter/chart state through resizing, and keep panes clear of separating hinges.

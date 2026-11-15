@@ -1,13 +1,9 @@
 package com.pocketupwatch
 
 import com.google.gson.*
-import java.io.StringReader
-import javax.xml.parsers.DocumentBuilderFactory
-import org.xml.sax.InputSource
 
 internal object BodyMatcher {
-    private val gson = GsonBuilder().setStrictness(Strictness.STRICT).create()
-    fun json(value: String): JsonElement = gson.fromJson(value, JsonElement::class.java) ?: throw IllegalArgumentException("JSON is empty")
+    fun json(value: String): JsonElement = StructuredBodies.json(value)
     fun select(root: JsonElement, path: String): JsonElement {
         require(path.startsWith("$")) { "JSON path must start with $" }
         var value = root
@@ -20,33 +16,23 @@ internal object BodyMatcher {
         }
         return value
     }
-    fun validate(type: String, expected: String, path: String = ""): String? = try {
-        when (type) {
-            "JSON" -> { json(expected); if (path.isNotBlank()) validatePath(path) }
-            "XML" -> xml(expected)
-            "Text", "None" -> Unit
-            else -> error("Unknown body matcher")
-        }
-        null
-    } catch (_: Exception) { "Invalid $type expectation or JSON path" }
-    fun validatePath(path: String) { require(Regex("\\$(?:\\.[A-Za-z_][A-Za-z0-9_-]*|\\[[0-9]+])*").matches(path)) }
-    fun matches(type: String, expected: String, actual: String, path: String = ""): Boolean = try {
+    fun validate(type: String, expected: String, path: String = ""): String? {
+        val problem = StructuredBodies.problem(if (type == "YML") "YAML" else type, expected)
+        if (problem != null) return problem.description
+        if (type == "JSON" && path.isNotBlank()) return runCatching { validatePath(path) }.exceptionOrNull()?.let { "Use a path such as $.status or $.items[0].ok." }
+        return null
+    }
+    fun validatePath(path: String) { require(Regex("\\$(?:\\.[A-Za-z_][A-Za-z0-9_-]*|\\[[0-9]+])*" ).matches(path)) }
+    fun matches(type: String, expected: String, actual: String, path: String = "", xmlStructural: Boolean = false, xmlIgnoreWhitespace: Boolean = false): Boolean = try {
         when (type) {
             "None" -> true
             "Text" -> actual == expected
-            "JSON" -> (if (path.isBlank()) json(actual) else select(json(actual), path)) == json(expected)
-            "XML" -> xml(actual).isEqualNode(xml(expected))
+            "JSON" -> StructuredBodies.equivalent(if (path.isBlank()) json(actual) else select(json(actual), path), json(expected))
+            "YAML", "YML" -> StructuredBodies.equivalent(StructuredBodies.yaml(actual), StructuredBodies.yaml(expected))
+            "XML" -> if (xmlStructural) StructuredBodies.xmlEquivalent(expected, actual, xmlIgnoreWhitespace) else StructuredBodies.xml(actual).isEqualNode(StructuredBodies.xml(expected))
             else -> false
         }
     } catch (_: Exception) { false }
-    private fun xml(value: String) = DocumentBuilderFactory.newInstance().apply {
-        setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-        setFeature("http://xml.org/sax/features/external-general-entities", false)
-        setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-        isXIncludeAware = false
-        isExpandEntityReferences = false
-        isNamespaceAware = true
-    }.newDocumentBuilder().parse(InputSource(StringReader(value))).apply { normalizeDocument() }
 }
 
 internal data class AlertDecision(val state: AlertState, val notification: String? = null)

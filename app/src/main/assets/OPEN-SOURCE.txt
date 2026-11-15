@@ -1,0 +1,28 @@
+Pocket Upwatch — editor and response parser notices
+
+Sora Editor and language-textmate 0.23.7
+Copyright 2020–2025 Rosemoe and contributors.
+Licensed under GNU LGPL 2.1 or later. Full terms: SORA-LICENSE.txt.
+Unmodified library source and build instructions:
+https://github.com/Rosemoe/sora-editor/tree/0.23.7
+The app uses the unmodified Maven artifacts. Pocket Upwatch's source and Gradle build files are available at https://github.com/WardPearce/PocketUpwatch. You may rebuild the application with a modified version of these libraries and reverse engineer the application for debugging modifications to them, as permitted by the LGPL. Android installation of rebuilt packages may require uninstalling the existing package or using a matching signing key; export your data first.
+
+Eclipse TM4E components bundled by language-textmate
+Copyright Eclipse TM4E contributors.
+Eclipse Public License 2.0. Full terms: EPL-2.0.txt.
+Source: https://github.com/eclipse-tm4e/tm4e
+Sora's adapted sources: https://github.com/Rosemoe/sora-editor/tree/0.23.7/language-textmate
+
+SnakeYAML Engine 2.9 and Gson 2.13.1
+Apache License 2.0. Full terms: APACHE-2.0.txt.
+https://github.com/snakeyaml/snakeyaml-engine
+https://github.com/google/gson
+
+Joni and JCodings (used by Sora TextMate)
+MIT licenses and upstream notices: REGEX-LICENSES.txt.
+https://github.com/jruby/joni
+https://github.com/jruby/jcodings
+
+JSON, YAML and XML highlighting grammars and editor themes in assets/textmate are authored for Pocket Upwatch. Syntax highlighting is a visual aid; response validation uses the independent strict parsers.
+
+Other AndroidX and Google Android dependencies use Apache 2.0; Kotlin uses Apache 2.0. OkHttp uses Apache 2.0. Vico uses Apache 2.0. These components retain their embedded notices in the application package.

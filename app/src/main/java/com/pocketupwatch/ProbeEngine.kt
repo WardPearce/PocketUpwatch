@@ -77,7 +77,7 @@ internal class ProbeEngine(
         return await(configured.newCall(request.build())).use { response ->
             val statusOk = if (service.expectedCode == 0) response.isSuccessful else response.code == service.expectedCode
             val actual = if (service.bodyType == "None") "" else response.peekBody(1_048_577).bytes().let { if (it.size > 1_048_576) null else it.toString(Charsets.UTF_8) }
-            val bodyOk = service.bodyType == "None" || actual != null && BodyMatcher.matches(service.bodyType, service.expectedBody, actual, service.jsonPath)
+            val bodyOk = service.bodyType == "None" || actual != null && BodyMatcher.matches(service.bodyType, service.expectedBody, actual, service.jsonPath, service.xmlStructural, service.xmlIgnoreWhitespace)
             ProbeResult(statusOk && bodyOk, "HTTP ${response.code}" + when { actual == null -> " · body exceeds 1 MiB"; !bodyOk -> " · body mismatch"; else -> "" })
         }
     }

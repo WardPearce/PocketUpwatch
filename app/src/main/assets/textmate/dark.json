@@ -1,0 +1,58 @@
+{
+  "name": "Pocket dark",
+  "colors": {
+    "editor.foreground": "#E6E1E5",
+    "editor.background": "#191C20",
+    "editorLineNumber.foreground": "#CAC4D0",
+    "editor.selectionBackground": "#44536B",
+    "editor.lineHighlightBackground": "#252A33"
+  },
+  "tokenColors": [
+    {
+      "settings": {
+        "foreground": "#E6E1E5",
+        "background": "#191C20"
+      }
+    },
+    {
+      "scope": [
+        "support.type.property-name",
+        "entity.name.tag",
+        "entity.other.attribute-name"
+      ],
+      "settings": {
+        "foreground": "#A8C7FA"
+      }
+    },
+    {
+      "scope": [
+        "string"
+      ],
+      "settings": {
+        "foreground": "#F2B8B5"
+      }
+    },
+    {
+      "scope": "constant.numeric",
+      "settings": {
+        "foreground": "#B5CEA8"
+      }
+    },
+    {
+      "scope": [
+        "constant.language",
+        "keyword"
+      ],
+      "settings": {
+        "foreground": "#D0BCFF"
+      }
+    },
+    {
+      "scope": "comment",
+      "settings": {
+        "foreground": "#CAC4D0",
+        "fontStyle": "italic"
+      }
+    }
+  ]
+}

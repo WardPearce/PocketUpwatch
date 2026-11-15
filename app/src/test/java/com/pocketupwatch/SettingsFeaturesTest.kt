@@ -348,7 +348,7 @@ class SettingsFeaturesTest {
             sql.execSQL("INSERT INTO services (id,name,url,intervalSeconds,enabled,expectedCode,bodyType,expectedBody) VALUES (1,'Existing','https://example.com',300,1,0,'None','')")
             sql.version = 4
         }
-        val migrated = Room.databaseBuilder(app, MonitorDb::class.java, name).addMigrations(MonitorDb.MIGRATION_4_5).allowMainThreadQueries().build()
+        val migrated = Room.databaseBuilder(app, MonitorDb::class.java, name).addMigrations(MonitorDb.MIGRATION_4_5, MonitorDb.MIGRATION_5_6).allowMainThreadQueries().build()
         try { assertEquals("Existing", migrated.dao().getService(1)!!.name); assertFalse(migrated.dao().getService(1)!!.needsReview) }
         finally { migrated.close(); app.deleteDatabase(name) }
     }

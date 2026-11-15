@@ -21,6 +21,37 @@ class MonitorDatabaseTest {
     private val dao = db.dao()
     private val template = ServiceEntry(name = "API", url = "https://example.com", intervalSeconds = 300, failureThreshold = 2)
     @After fun close() { db.close() }
+    @Test fun maintenanceUpdateChangesOnlyTheWindow() = runBlocking {
+        val id = dao.add(template.copy(enabled = false, headersCiphertext = "keep-credentials", bodyType = "YAML", expectedBody = "ok: true"))
+        val before = dao.getService(id)!!
+        dao.setMaintenance(id, 123456L)
+        assertEquals(before.copy(maintenanceUntil = 123456L), dao.getService(id))
+        dao.setMaintenance(id, 0)
+        assertEquals(before, dao.getService(id))
+    }
+    @Test fun versionFiveMigrationRetainsLegacyXmlMatchingAndMaintenance() = runBlocking {
+        val name = "response-migration.db"
+        context.deleteDatabase(name)
+        val schema = com.google.gson.JsonParser.parseString(java.io.File("schemas/com.pocketupwatch.MonitorDb/5.json").readText()).asJsonObject["database"].asJsonObject
+        val file = context.getDatabasePath(name).apply { parentFile!!.mkdirs() }
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { sql ->
+            schema["entities"].asJsonArray.forEach { value ->
+                val entity = value.asJsonObject
+                sql.execSQL(entity["createSql"].asString.replace("\${TABLE_NAME}", entity["tableName"].asString))
+                entity["indices"].asJsonArray.forEach { sql.execSQL(it.asJsonObject["createSql"].asString.replace("\${TABLE_NAME}", entity["tableName"].asString)) }
+            }
+            sql.execSQL("INSERT INTO services (id,name,url,intervalSeconds,enabled,expectedCode,bodyType,expectedBody,maintenanceUntil) VALUES (1,'Existing','https://example.com',300,1,0,'XML','<ok/>',999999)")
+            sql.version = 5
+        }
+        val migrated = Room.databaseBuilder(context, MonitorDb::class.java, name).addMigrations(MonitorDb.MIGRATION_5_6).allowMainThreadQueries().build()
+        try {
+            val service = migrated.dao().getService(1)!!
+            assertFalse(service.xmlStructural)
+            assertFalse(service.xmlIgnoreWhitespace)
+            assertEquals(999999L, service.maintenanceUntil)
+            assertEquals("<ok/>", service.expectedBody)
+        } finally { migrated.close(); context.deleteDatabase(name) }
+    }
     @Test fun longRangeStatisticsIncludeChecksOlderThanFiveHundredSamples() = runBlocking {
         val id = dao.add(template)
         repeat(600) { index -> dao.record(CheckEntry(serviceId = id, time = index * 300_000L, up = index >= 50, responseMs = 10, detail = "HTTP 200")) }
@@ -82,7 +113,7 @@ class MonitorDatabaseTest {
             sql.execSQL("INSERT INTO checks VALUES (1,1,1000,1,42,'HTTP 200')")
             sql.version = 3
         }
-        val migrated = Room.databaseBuilder(context, MonitorDb::class.java, name).addMigrations(MonitorDb.MIGRATION_3_4, MonitorDb.MIGRATION_4_5).allowMainThreadQueries().build()
+        val migrated = Room.databaseBuilder(context, MonitorDb::class.java, name).addMigrations(MonitorDb.MIGRATION_3_4, MonitorDb.MIGRATION_4_5, MonitorDb.MIGRATION_5_6).allowMainThreadQueries().build()
         try {
             assertEquals("Existing", migrated.dao().getService(1)!!.name)
             assertEquals(2, migrated.dao().getService(1)!!.failureThreshold)
@@ -110,7 +141,7 @@ class MonitorDatabaseTest {
                 }
                 sql.version = version
             }
-            val migrated = Room.databaseBuilder(context, MonitorDb::class.java, name).addMigrations(MonitorDb.MIGRATION_1_2, MonitorDb.MIGRATION_2_3, MonitorDb.MIGRATION_3_4, MonitorDb.MIGRATION_4_5).allowMainThreadQueries().build()
+            val migrated = Room.databaseBuilder(context, MonitorDb::class.java, name).addMigrations(MonitorDb.MIGRATION_1_2, MonitorDb.MIGRATION_2_3, MonitorDb.MIGRATION_3_4, MonitorDb.MIGRATION_4_5, MonitorDb.MIGRATION_5_6).allowMainThreadQueries().build()
             try {
                 val service = migrated.dao().getService(1)!!
                 assertEquals(300, service.intervalSeconds)

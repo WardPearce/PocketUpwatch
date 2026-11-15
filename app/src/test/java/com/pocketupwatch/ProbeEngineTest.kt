@@ -36,6 +36,17 @@ class ProbeEngineTest {
             assertEquals("{\"probe\":true}", request.body.readUtf8())
         }
     }
+    @Test fun httpResponsesUseYamlNormalizationAndXmlOptions() = runBlocking {
+        MockWebServer().use { server ->
+            val engine = ProbeEngine({ emptyMap() })
+            server.enqueue(MockResponse().setBody("{checks: [true, 1.0], status: ready}"))
+            assertEquals(true, engine.execute(service.copy(url = server.url("/").toString(), bodyType = "YAML", expectedBody = "status: ready\nchecks: [true, 1]")).up)
+            server.enqueue(MockResponse().setBody("<r>\n  <a>ok</a>\n</r>"))
+            assertEquals(true, engine.execute(service.copy(url = server.url("/").toString(), bodyType = "XML", expectedBody = "<r><a>ok</a></r>", xmlStructural = true, xmlIgnoreWhitespace = true)).up)
+            server.enqueue(MockResponse().setBody("<r>\n  <a>ok</a>\n</r>"))
+            assertEquals(false, engine.execute(service.copy(url = server.url("/").toString(), bodyType = "XML", expectedBody = "<r><a>ok</a></r>")).up)
+        }
+    }
     @Test fun exactStatusRedirectPolicyAndBodyLimitAreEnforced() = runBlocking {
         MockWebServer().use { server ->
             val engine = ProbeEngine({ emptyMap() })
@@ -51,10 +62,10 @@ class ProbeEngineTest {
     }
     @Test fun cancelledHttpCallsDoNotProduceResults() = runBlocking {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setBody("ok").setHeadersDelay(5, TimeUnit.SECONDS))
+            server.enqueue(MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.NO_RESPONSE))
             var recorded = false
             val job = launch(Dispatchers.IO) { ProbeEngine({ emptyMap() }).execute(service.copy(url = server.url("/").toString())); recorded = true }
-            withContext(Dispatchers.IO) { server.takeRequest(2, TimeUnit.SECONDS) }
+            assertNotNull(withContext(Dispatchers.IO) { server.takeRequest(2, TimeUnit.SECONDS) })
             job.cancelAndJoin()
             assertFalse(recorded)
         }

@@ -71,7 +71,7 @@ class EditorUiTest {
         val existing = ServiceEntry(id = 2, name = "Health", url = "https://example.com", intervalSeconds = 300, bodyType = "JSON", expectedBody = "{")
         compose.setContent { MaterialTheme { ServiceEditor(existing, onCancel = {}, onSave = { fail("Invalid JSON must not be saved") }) } }
         compose.onNodeWithText("Save").assertIsNotEnabled()
-        compose.onNodeWithText("Invalid JSON expectation or JSON path").assertExists()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Line", substring = true).fetchSemanticsNodes().isNotEmpty() }
     }
     @Test fun intervalSliderSavesHumanReadableSelection() {
         val existing = ServiceEntry(id = 3, name = "Health", url = "https://example.com/health", intervalSeconds = 300)

@@ -36,7 +36,7 @@ class EditorRedesignTest {
         compose.onNodeWithText("Failures before marking down").assertDoesNotExist()
         compose.onNodeWithText("Save").assertIsDisplayed()
         saveScreenshot("add-service-light")
-        compose.onNodeWithText("Alerts & maintenance").performScrollTo().performClick()
+        compose.onNodeWithText("Alerts").performScrollTo().performClick()
         compose.onNodeWithText("Failures before marking down").assertExists()
         compose.onNodeWithText("Save").assertIsDisplayed()
         compose.onNodeWithText("Cancel").assertIsDisplayed()
@@ -53,6 +53,7 @@ class EditorRedesignTest {
         compose.setContent { screenshotView = LocalView.current; MaterialTheme { Surface { ServiceEditor(existing, onCancel = {}, probe = ok, onSave = { saved = it }) } } }
         compose.onNodeWithContentDescription("Require Internet").assertIsOff()
         compose.onNodeWithText("Expected JSON value").assertDoesNotExist()
+        compose.waitUntil(10_000) { compose.onNodeWithText("Save").fetchSemanticsNode().config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled).not() }
         compose.onNodeWithText("Save").performClick()
         compose.waitUntil(10_000) { saved != null }
         assertEquals(existing, saved)

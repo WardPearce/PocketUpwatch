@@ -1,0 +1,58 @@
+{
+  "name": "Pocket light",
+  "colors": {
+    "editor.foreground": "#202124",
+    "editor.background": "#FAFAFA",
+    "editorLineNumber.foreground": "#575B64",
+    "editor.selectionBackground": "#C8DCF9",
+    "editor.lineHighlightBackground": "#EFF1F4"
+  },
+  "tokenColors": [
+    {
+      "settings": {
+        "foreground": "#202124",
+        "background": "#FAFAFA"
+      }
+    },
+    {
+      "scope": [
+        "support.type.property-name",
+        "entity.name.tag",
+        "entity.other.attribute-name"
+      ],
+      "settings": {
+        "foreground": "#174EA6"
+      }
+    },
+    {
+      "scope": [
+        "string"
+      ],
+      "settings": {
+        "foreground": "#A12323"
+      }
+    },
+    {
+      "scope": "constant.numeric",
+      "settings": {
+        "foreground": "#23642F"
+      }
+    },
+    {
+      "scope": [
+        "constant.language",
+        "keyword"
+      ],
+      "settings": {
+        "foreground": "#683BA3"
+      }
+    },
+    {
+      "scope": "comment",
+      "settings": {
+        "foreground": "#575B64",
+        "fontStyle": "italic"
+      }
+    }
+  ]
+}

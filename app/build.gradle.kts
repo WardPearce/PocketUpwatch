@@ -1,4 +1,4 @@
-plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("org.jetbrains.kotlin.kapt") }
+plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("org.jetbrains.kotlin.kapt"); id("org.jetbrains.kotlin.plugin.compose") }
 // Tests use API 28 plus API 35 for resource loading. Resolve both through Gradle,
 // rather than making Robolectric download it (and checksums) during every test run.
 val robolectricSdk by configurations.creating { isCanBeConsumed = false; isTransitive = false }
@@ -14,8 +14,8 @@ android {
         applicationId = "io.github.wardpearce.pocketupwatch"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
-        versionName = "0.1.10"
+        versionCode = 17
+        versionName = "0.1.11"
     }
     signingConfigs {
         create("release") {
@@ -47,20 +47,23 @@ android {
         }
     }
     buildFeatures { compose = true; buildConfig = true }
-    composeOptions { kotlinCompilerExtensionVersion = "1.5.15" }
-    compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+    compileOptions { isCoreLibraryDesugaringEnabled = true; sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
 kapt { arguments { arg("room.schemaLocation", "$projectDir/schemas") } }
 dependencies {
     add(robolectricSdk.name, "org.robolectric:android-all-instrumented:9-robolectric-4913185-2-i7")
     add(robolectricResourcesSdk.name, "org.robolectric:android-all-instrumented:15-robolectric-12650502-i7")
-    implementation("com.google.code.gson:gson:2.11.0")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    implementation("io.github.rosemoe:editor:0.23.7")
+    implementation("io.github.rosemoe:language-textmate:0.23.7")
+    implementation("org.snakeyaml:snakeyaml-engine:2.9")
+    implementation("com.google.code.gson:gson:2.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("androidx.test:core:1.6.1")
-    testImplementation("androidx.room:room-testing:2.6.1")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    testImplementation("androidx.room:room-testing:2.7.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
     testImplementation("junit:junit:4.13.2")
@@ -75,8 +78,8 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    kapt("androidx.room:room-compiler:2.6.1")
+    implementation("androidx.room:room-runtime:2.7.2")
+    implementation("androidx.room:room-ktx:2.7.2")
+    kapt("androidx.room:room-compiler:2.7.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
