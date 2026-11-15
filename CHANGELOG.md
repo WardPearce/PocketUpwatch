@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.10
+
+- Add tablet and unfolded-foldable workspaces with a navigation rail, monitor list/detail panes, a settings sidebar, and multi-column forms and cards. Preserve phone layouts and in-memory editing/filter/chart state through resizing, and keep panes clear of separating hinges.
+- Cache both Robolectric runtimes with Gradle via Google's Maven Central mirror and run tests with offline runtime resolution, avoiding the HTTP 429 failures in CI.
+
+- Organize Settings into six pages with current-value summaries, live background diagnostics, resolved-error labels, and direct permission/channel links.
+- Separate encrypted backups and redacted templates; add password confirmation/reveal, file-first import, selectable previews, similar-address warnings, guarded transactions, and activity-recreation recovery.
+- Preserve imported template review requirements in database version 5; prevent individual and bulk starts until reviewed in the editor. Keep existing version 1 backups compatible and optionally include portable app preferences in version 2 backups.
+- Add new-monitor defaults for intervals, timeouts, Internet requirements, and failure/recovery thresholds, preserving existing monitors.
+- Add notification readiness, Test alert, alert snooze, and daily quiet hours while checks and incidents continue. Announce ongoing deferred outages after alerts resume.
+- Add persistent sort/chart defaults, compact list spacing, and timestamp choices.
+- Show storage counts, file usage, oldest retained check, and last cleanup; preview manual cleanup while monitoring is paused.
+- Track successful encrypted backups and offer optional reminders independent of monitoring. Add reviewed support reports, permission setup, and help/project links.
+- Match protocol/address field heights and alignment, including large text, while retaining automatic URL protocol selection.
+- Shorten labels, explanations, errors, time units, and widget copy across the app; remove the instruction to enter a name to enable Save.
+- Add regression coverage and native previews for settings, backup/import, data migration, cleanup, alert suppression, and editor alignment. Count only persisted checks in background diagnostics.
+
 ## 0.1.9
 
 - Use bold white UP/DOWN text on opaque green/red badges, with contrasting borders in dark mode and measured text contrast of at least 7:1 in both themes.

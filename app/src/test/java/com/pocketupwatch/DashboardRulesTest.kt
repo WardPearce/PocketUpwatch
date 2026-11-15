@@ -46,7 +46,7 @@ class DashboardRulesTest {
         assertEquals("Monitoring stopped", health(active = false)!!.title)
         assertEquals("Checks are delayed", health(at = now + 601_000)!!.title)
         assertEquals("Alerts are turned off", health(notifications = false)!!.title)
-        assertEquals("Background work needs attention", health(errorTime = now + 1)!!.title)
+        assertEquals("Monitoring needs attention", health(errorTime = now + 1)!!.title)
         assertNull(health(errorTime = now - 1))
         assertNull(backgroundHealth(listOf(service.copy(enabled = false)), emptyMap(), false, now, 0, 0, null, false, false))
         assertNull(backgroundHealth(listOf(service.copy(maintenanceUntil = now + 900_000)), mapOf(1L to check(true)), true, now + 601_000, now, 0, null, true, true))

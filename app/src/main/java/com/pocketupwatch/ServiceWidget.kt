@@ -63,7 +63,7 @@ internal object ServiceWidgetRenderer {
     fun views(context: Context, widgetId: Int, snapshot: ServiceWidgetSnapshot): RemoteViews {
         val service = snapshot.data.service
         val views = RemoteViews(context.packageName, R.layout.service_widget)
-        val title = service?.name ?: if (snapshot.selectedId == null) "Choose a service" else "Service removed"
+        val title = service?.name ?: if (snapshot.selectedId == null) "Choose a monitor" else "Service removed"
         val uptime = snapshot.uptime?.let { String.format(Locale.getDefault(), "%.1f%%", it * 100) } ?: "—"
         views.setTextViewText(R.id.service_widget_title, title)
         views.setTextViewText(R.id.service_widget_status, snapshot.status)

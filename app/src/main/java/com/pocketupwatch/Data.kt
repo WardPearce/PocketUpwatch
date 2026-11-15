@@ -28,7 +28,8 @@ data class ServiceEntry(
     @ColumnInfo(defaultValue = "0") val maintenanceUntil: Long = 0,
     @ColumnInfo(defaultValue = "30") val certificateWarnDays: Int = 30,
     @ColumnInfo(defaultValue = "''") val dnsExpected: String = "",
-    @ColumnInfo(defaultValue = "''") val tags: String = ""
+    @ColumnInfo(defaultValue = "''") val tags: String = "",
+    @ColumnInfo(defaultValue = "0") val needsReview: Boolean = false
 )
 @Entity(tableName = "checks", foreignKeys = [ForeignKey(entity = ServiceEntry::class, parentColumns = ["id"], childColumns = ["serviceId"], onDelete = ForeignKey.CASCADE)], indices = [Index("serviceId"), Index(value = ["serviceId", "time", "id"])])
 data class CheckEntry(@PrimaryKey(autoGenerate = true) val id: Long = 0, val serviceId: Long, val time: Long, val up: Boolean, val responseMs: Long, val detail: String, @ColumnInfo(defaultValue = "0") val skipped: Boolean = false)
@@ -43,6 +44,8 @@ data class ChartBucket(val time: Long, val upCount: Long, val downCount: Long, v
 data class ServiceWidgetData(val service: ServiceEntry?, val latest: CheckEntry?, val buckets: List<ChartBucket>, val alertState: AlertState? = null)
 
 data class HistoryVersion(val total: Int = 0, val latestId: Long = 0)
+data class RecordedCheck(val notification: String?, val confirmed: String)
+data class StorageStats(val checks: Long = 0, val incidents: Long = 0, val summaries: Long = 0, val oldest: Long? = null)
 data class HistoryPage(val checks: List<CheckEntry>, val total: Int, val page: Int, val anchorId: Long) {
     val pageCount: Int get() = maxOf(1, (total + 49) / 50)
 }
@@ -53,7 +56,15 @@ data class HistoryPage(val checks: List<CheckEntry>, val total: Int, val page: I
     @Insert suspend fun add(service: ServiceEntry): Long
     @Delete suspend fun delete(service: ServiceEntry)
     @Update suspend fun update(service: ServiceEntry)
-    @Query("UPDATE services SET enabled = :enabled") suspend fun setAllEnabled(enabled: Boolean)
+    @Query("UPDATE services SET enabled = :enabled WHERE :enabled = 0 OR needsReview = 0") suspend fun setAllEnabled(enabled: Boolean)
+    @Query("SELECT (SELECT COUNT(*) FROM checks) AS checks, (SELECT COUNT(*) FROM incidents) AS incidents, (SELECT COUNT(*) FROM hourly_stats) AS summaries, (SELECT MIN(time) FROM checks) AS oldest") fun storageStats(): Flow<StorageStats>
+    @Query("SELECT COUNT(*) FROM checks WHERE time < :before AND id NOT IN (SELECT MAX(id) FROM checks GROUP BY serviceId)") suspend fun cleanupCount(before: Long): Long
+    @Transaction suspend fun cleanup(before: Long, now: Long): Long {
+        val count = cleanupCount(before)
+        pruneChecks(before)
+        pruneHours(now - 365 * 86_400_000L)
+        return count
+    }
     @Query("SELECT * FROM checks WHERE serviceId = :id ORDER BY time DESC, id DESC LIMIT 500") fun history(id: Long): Flow<List<CheckEntry>>
     @Query("SELECT * FROM checks WHERE serviceId = :id ORDER BY time DESC, id DESC LIMIT 1") fun latestFlow(id: Long): Flow<CheckEntry?>
     @Query("SELECT * FROM checks WHERE serviceId = :id ORDER BY time DESC, id DESC LIMIT 1") suspend fun latest(id: Long): CheckEntry?
@@ -96,8 +107,10 @@ data class HistoryPage(val checks: List<CheckEntry>, val total: Int, val page: I
     @Query("DELETE FROM checks WHERE time < :before AND id NOT IN (SELECT MAX(id) FROM checks GROUP BY serviceId)") suspend fun pruneChecks(before: Long)
     @Query("DELETE FROM hourly_stats WHERE hour < :before") suspend fun pruneHours(before: Long)
     @Transaction suspend fun importServices(services: List<ServiceEntry>) { services.forEach { add(it.copy(id = 0, enabled = false)) } }
-    @Transaction suspend fun recordIfUnchanged(service: ServiceEntry, check: CheckEntry): String? {
-        if (getService(service.id) != service || !service.enabled) return null
+    @Transaction suspend fun importSelection(services: List<ServiceEntry>): List<Long> = services.map { add(it.copy(id = 0, enabled = false)) }
+    @Transaction suspend fun recordIfUnchanged(service: ServiceEntry, check: CheckEntry): String? = recordResultIfUnchanged(service, check)?.notification
+    @Transaction suspend fun recordResultIfUnchanged(service: ServiceEntry, check: CheckEntry): RecordedCheck? {
+        if (getService(service.id) != service || !service.enabled || service.needsReview) return null
         record(check)
         val hour = check.time / 3_600_000 * 3_600_000
         val oldHour = hour(service.id, hour) ?: HourlyStats(service.id, hour)
@@ -109,14 +122,15 @@ data class HistoryPage(val checks: List<CheckEntry>, val total: Int, val page: I
         else if (!check.up && old.confirmed == "DOWN") countDown(service.id)
         if (old.confirmed != "DOWN" && decision.state.confirmed == "DOWN") openIncident(Incident(serviceId = service.id, startedAt = decision.state.candidateSince, reason = check.detail, downChecks = decision.state.downStreak))
         if (old.confirmed == "DOWN" && decision.state.confirmed == "UP") closeIncidents(service.id, check.time)
-        return decision.notification
+        return RecordedCheck(decision.notification, decision.state.confirmed)
     }
 }
 
-@Database(entities = [ServiceEntry::class, CheckEntry::class, AlertState::class, Incident::class, HourlyStats::class], version = 4, exportSchema = true)
+@Database(entities = [ServiceEntry::class, CheckEntry::class, AlertState::class, Incident::class, HourlyStats::class], version = 5, exportSchema = true)
 abstract class MonitorDb : RoomDatabase() {
     abstract fun dao(): MonitorDao
     companion object {
+        val MIGRATION_4_5 = object : Migration(4, 5) { override fun migrate(db: SupportSQLiteDatabase) { db.execSQL("ALTER TABLE services ADD COLUMN needsReview INTEGER NOT NULL DEFAULT 0") } }
         val MIGRATION_1_2 = object : Migration(1, 2) { override fun migrate(db: SupportSQLiteDatabase) { db.execSQL("ALTER TABLE services ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1"); db.execSQL("ALTER TABLE services ADD COLUMN expectedCode INTEGER NOT NULL DEFAULT 0"); db.execSQL("ALTER TABLE services ADD COLUMN bodyType TEXT NOT NULL DEFAULT 'None'"); db.execSQL("ALTER TABLE services ADD COLUMN expectedBody TEXT NOT NULL DEFAULT ''") } }
         val MIGRATION_2_3 = object : Migration(2, 3) { override fun migrate(db: SupportSQLiteDatabase) { db.execSQL("UPDATE services SET intervalSeconds = 300 WHERE intervalSeconds < 300") } }
         val MIGRATION_3_4 = object : Migration(3, 4) {
@@ -137,6 +151,6 @@ abstract class MonitorDb : RoomDatabase() {
             }
         }
         @Volatile private var instance: MonitorDb? = null
-        fun get(context: Context): MonitorDb = instance ?: synchronized(this) { instance ?: Room.databaseBuilder(context.applicationContext, MonitorDb::class.java, "monitor.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).addCallback(MINIMUM_INTERVAL_CALLBACK).build().also { instance = it } }
+        fun get(context: Context): MonitorDb = instance ?: synchronized(this) { instance ?: Room.databaseBuilder(context.applicationContext, MonitorDb::class.java, "monitor.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).addCallback(MINIMUM_INTERVAL_CALLBACK).build().also { instance = it } }
     }
 }

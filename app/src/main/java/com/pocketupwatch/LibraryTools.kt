@@ -1,119 +1,17 @@
 package com.pocketupwatch
 
-import android.content.Intent
-import android.net.Uri
-import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-@Composable internal fun LibraryTools(vm: MonitorViewModel, mode: String, onMode: (String) -> Unit, modifier: Modifier) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val prefs = remember { context.getSharedPreferences("settings", 0) }
-    var retention by remember { mutableIntStateOf(prefs.getInt("retention_days", 90)) }
-    var passphrase by remember { mutableStateOf("") }
-    var message by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    var preview by remember { mutableStateOf<List<ServiceEntry>?>(null) }
-    var preparedExport by remember { mutableStateOf<String?>(null) }
-    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        val data = preparedExport
-        if (uri != null && data != null) scope.launch {
-            busy = true
-            try { withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openOutputStream(uri, "wt")).bufferedWriter().use { it.write(data) } }; message = "Backup exported" }
-            catch (_: Exception) { message = "Could not write backup" }
-            finally { busy = false; preparedExport = null; passphrase = "" }
-        } else preparedExport = null
-    }
-    val import = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) scope.launch {
-            busy = true
-            val password = passphrase.toCharArray()
-            try {
-                preview = withContext(Dispatchers.IO) {
-                    val bytes = requireNotNull(context.contentResolver.openInputStream(uri)).use { stream ->
-                        val output = java.io.ByteArrayOutputStream()
-                        val buffer = ByteArray(8192)
-                        while (true) { val count = stream.read(buffer); if (count < 0) break; require(output.size() + count <= 8 * 1_024 * 1_024); output.write(buffer, 0, count) }
-                        output.toByteArray()
-                    }
-                    BackupCodec.decode(bytes.toString(Charsets.UTF_8), password, SecretStore()::encrypt)
-                }
-            } catch (_: Exception) { message = "Could not read backup. Check its format and passphrase." }
-            finally { password.fill('\u0000'); passphrase = ""; busy = false }
-        }
-    }
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        ChoiceMenu("Theme", mode, listOf("System", "Light", "Dark"), onMode)
-        BackgroundStatus()
-        ChoiceMenu("Keep raw history", "$retention days", listOf("30 days", "90 days", "180 days", "365 days")) { retention = it.substringBefore(' ').toInt(); prefs.edit().putInt("retention_days", retention).apply() }
-        Text("Old raw checks are cleaned up during monitoring. Hourly summaries are kept for one year. Incidents remain until their monitor is deleted.", style = MaterialTheme.typography.bodySmall)
-        AppSecondaryButton(onClick = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }, modifier = Modifier.fillMaxWidth()) { Text("Open battery and notification settings") }
-        Text("Configuration backup", style = MaterialTheme.typography.titleLarge)
-        Text("Without a passphrase, exports omit headers, request/expected bodies and URL query values. With a passphrase of at least 12 characters, the full configuration is encrypted. Imported monitors are always paused; review them before enabling.")
-        TextField(passphrase, { passphrase = it }, Modifier.fillMaxWidth(), label = { Text("Backup passphrase (optional for export)") }, visualTransformation = PasswordVisualTransformation())
-        AppButton(modifier = Modifier.fillMaxWidth(), enabled = !busy && (passphrase.isEmpty() || passphrase.length >= 12), onClick = {
-            busy = true
-            scope.launch {
-                val password = passphrase.toCharArray()
-                try {
-                    preparedExport = withContext(Dispatchers.IO) { BackupCodec.encode(vm.dao.allServices(), password, SecretStore()::decrypt) }
-                    export.launch("PocketUpwatch-config.json")
-                } catch (_: Exception) { message = "Could not prepare backup" }
-                finally { password.fill('\u0000'); busy = false }
-            }
-        }) { Text("Export configuration") }
-        AppSecondaryButton(modifier = Modifier.fillMaxWidth(), enabled = !busy, onClick = { import.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }) { Text("Import configuration") }
-        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        message?.let { Text(it) }
-        Text("Android shortcuts", style = MaterialTheme.typography.titleLarge)
-        Text("Add the Pocket Upwatch overview or Service uptime widget from your launcher's widget picker. Choose a service when adding a Service uptime widget; tap it to open that service. Add the monitoring tile from Quick Settings to pause or resume all monitors.")
-        Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
-    }
-    preview?.let { monitors ->
-        AlertDialog(onDismissRequest = { preview = null }, title = { Text("Import ${monitors.size} monitors?") }, text = { Text("These monitors will be added as paused copies. Existing monitors and history will be kept. Review redacted settings and credentials before enabling.") }, confirmButton = {
-            AppSecondaryButton(onClick = { scope.launch {
-                try { vm.dao.importServices(monitors); message = "Imported ${monitors.size} paused monitors" }
-                catch (_: Exception) { message = "Could not import monitors" }
-                finally { preview = null }
-            } }) { Text("Import paused copies") }
-        }, dismissButton = { AppSecondaryButton(onClick = { preview = null }) { Text("Cancel") } })
-    }
-}
-
-@Composable private fun BackgroundStatus() {
-    val context = LocalContext.current
-    var refresh by remember { mutableIntStateOf(0) }
-    val diagnostics = remember(refresh) { BackgroundDiagnostics.prefs(context).all }
-    DetailSection {
-        Text("Background monitoring", style = MaterialTheme.typography.titleMedium)
-        Text(if (CheckAlarm.canScheduleExact(context)) "Exact alarms allowed" else "Exact alarms are off. Android may delay checks and block restarting monitoring from a delayed alarm.")
-        val power = context.getSystemService(android.os.PowerManager::class.java)
-        Text(if (power.isIgnoringBatteryOptimizations(context.packageName)) "Battery optimization: unrestricted" else "Battery optimization is enabled; Android may delay background work.")
-        listOf("last_alarm" to "Last alarm delivered", "last_cycle" to "Last scheduler cycle", "last_result" to "Last saved check", "last_error_time" to "Last background error").forEach { (key, label) ->
-            val time = diagnostics[key] as? Long ?: 0
-            Text("$label: ${if (time == 0L) "None recorded" else java.text.DateFormat.getDateTimeInstance().format(java.util.Date(time))}", style = MaterialTheme.typography.bodySmall)
-        }
-        (diagnostics["last_error"] as? String)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (!CheckAlarm.canScheduleExact(context)) AppSecondaryButton(onClick = { context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}"))) }) { Text("Allow timely alarms") }
-        AppSecondaryButton(onClick = { refresh++ }) { Text("Refresh diagnostics") }
-    }
-}
 
 @Composable internal fun CsvExportButtons(id: Long, dao: MonitorDao) {
     val context = LocalContext.current
@@ -127,8 +25,8 @@ import kotlinx.coroutines.withContext
                     val data = if (incidents) BackupCodec.incidentsCsv(dao.exportIncidents(id)) else BackupCodec.historyCsv(dao.exportHistory(id))
                     requireNotNull(context.contentResolver.openOutputStream(uri, "wt")).bufferedWriter().use { it.write(data) }
                 }
-                message = "CSV exported"
-            } catch (_: Exception) { message = "Could not export CSV" }
+                message = "CSV saved."
+            } catch (_: Exception) { message = "Couldn't save the CSV file. Try again." }
         }
     }
     var exportMenu by remember { mutableStateOf(false) }

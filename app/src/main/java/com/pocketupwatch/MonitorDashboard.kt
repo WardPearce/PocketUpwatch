@@ -69,11 +69,11 @@ internal fun backgroundHealth(
         now - check.time > maxOf(it.intervalSeconds * 2_000L, 120_000L)
     } == true }
     val issue = when {
-        !active -> "Monitoring stopped" to "Enabled monitors are not running. Open diagnostics to review background access."
-        lastErrorTime > last && lastError != null -> "Background work needs attention" to lastError
-        delayed -> "Checks are delayed" to "Some monitors have missed their expected checks. Android may be delaying background work."
-        !notificationsAllowed -> "Alerts are turned off" to "Allow notifications in Android settings to receive service alerts."
-        !exactAlarmsAllowed -> "Scheduled checks may be delayed" to "Allow timely alarms to improve checks while your phone sleeps."
+        !active -> "Monitoring stopped" to "Your monitors aren't running. Check background access in Settings."
+        lastErrorTime > last && lastError != null -> "Monitoring needs attention" to lastError
+        delayed -> "Checks are delayed" to "Some checks are overdue. Android may be delaying them."
+        !notificationsAllowed -> "Alerts are turned off" to "Allow notifications in Android settings to get alerts."
+        !exactAlarmsAllowed -> "Scheduled checks may be delayed" to "Allow alarms to help checks run while your phone sleeps."
         else -> return null
     }
     return BackgroundHealth(issue.first, issue.second, last)
@@ -114,10 +114,12 @@ internal fun relativeCheckAge(time: Long, now: Long): String {
 @Composable internal fun MonitorDashboard(
     services: List<ServiceEntry>, checks: Map<Long, CheckEntry>, states: Map<Long, AlertState>, active: Boolean,
     now: Long, health: BackgroundHealth?, modifier: Modifier = Modifier, onDiagnostics: () -> Unit,
-    onSetAll: (Boolean) -> Unit, onToggle: (ServiceEntry, Boolean) -> Unit, onSelect: (ServiceEntry) -> Unit
+    onSetAll: (Boolean) -> Unit, onToggle: (ServiceEntry, Boolean) -> Unit, onSelect: (ServiceEntry) -> Unit, selectedId: Long? = null
 ) {
+    val preferences = rememberAppSettings()
+    val sidebar = LocalAdaptiveWindow.current.workspace
     var search by rememberSaveable { mutableStateOf("") }
-    var sort by rememberSaveable { mutableStateOf("Newest") }
+    var sort by rememberSaveable(preferences.sort) { mutableStateOf(preferences.sort) }
     var filter by rememberSaveable { mutableStateOf(DashboardFilter.ALL) }
     var tag by rememberSaveable { mutableStateOf("") }
     val tags = services.flatMap(::monitorTags).distinctBy(String::lowercase).sortedBy(String::lowercase)
@@ -125,7 +127,7 @@ internal fun relativeCheckAge(time: Long, now: Long): String {
     val effectiveTag = tag.takeIf { selected -> tags.any { it.equals(selected, true) } }.orEmpty()
     val statuses = services.map { MonitorStatus.label(it, checks[it.id], active, now, states[it.id]) }
     val visible = dashboardMonitors(services, checks, states, active, now, search, effectiveTag, filter, sort)
-    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp, 12.dp, 16.dp, 100.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(modifier.fillMaxSize().testTag("monitor-list"), contentPadding = PaddingValues(16.dp, 12.dp, 16.dp, 100.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
@@ -133,7 +135,8 @@ internal fun relativeCheckAge(time: Long, now: Long): String {
                     Text(if (active) "Monitoring active" else if (services.none { it.enabled }) "All paused" else "Stopped", style = MaterialTheme.typography.labelMedium)
                 }
                 BoxWithConstraints {
-                    val columns = if (maxWidth < 350.dp || LocalDensity.current.fontScale > 1.3f) 2 else 4
+                    val condensed = sidebar && maxWidth >= 300.dp && LocalDensity.current.fontScale <= 1.3f
+                    val columns = if (condensed) 4 else if (maxWidth < 350.dp || LocalDensity.current.fontScale > 1.3f) 2 else 4
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         DashboardFilter.entries.chunked(columns).forEach { row ->
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -146,9 +149,9 @@ internal fun relativeCheckAge(time: Long, now: Long): String {
                                         colors = CardDefaults.outlinedCardColors(containerColor = if (filter == choice) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow),
                                         border = BorderStroke(1.dp, if (filter == choice) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
                                     ) {
-                                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                            Text("$count", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                                            Text(choice.title, style = MaterialTheme.typography.labelMedium)
+                                        Column(Modifier.padding(if (condensed) 8.dp else 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text("$count", style = if (condensed) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                                            Text(choice.title, style = if (condensed) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium)
                                         }
                                     }
                                 }
@@ -161,7 +164,7 @@ internal fun relativeCheckAge(time: Long, now: Long): String {
         if (health != null) item { BackgroundHealthBanner(health, now, onDiagnostics) }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth(), label = { Text("Search monitors") },
+                OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth(), label = { Text(if (sidebar) "Search" else "Search monitors") },
                     placeholder = { Text("Name, target or tag") }, singleLine = true, shape = RoundedCornerShape(14.dp),
                     leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = {
                         if (search.isNotEmpty()) IconButton(onClick = { search = "" }) { Icon(Icons.Default.Close, "Clear search") }
@@ -178,7 +181,7 @@ internal fun relativeCheckAge(time: Long, now: Long): String {
                         IconButton(onClick = { actions = true }) { Icon(Icons.Default.MoreVert, "Actions for all monitors") }
                         DropdownMenu(actions, { actions = false }) {
                             DropdownMenuItem(text = { Text("Pause all monitors") }, enabled = services.any { it.enabled }, onClick = { actions = false; onSetAll(false) })
-                            DropdownMenuItem(text = { Text("Resume all monitors") }, enabled = services.any { !it.enabled }, onClick = { actions = false; onSetAll(true) })
+                            DropdownMenuItem(text = { Text("Resume all monitors") }, enabled = services.any { !it.enabled && !it.needsReview }, onClick = { actions = false; onSetAll(true) })
                         }
                     }
                 }
@@ -187,12 +190,12 @@ internal fun relativeCheckAge(time: Long, now: Long): String {
             }
         }
         if (visible.isEmpty()) item {
-            Text(if (services.isEmpty()) "Add your first monitor to start checking." else "No matching monitors. Try another filter or clear your search.", modifier = Modifier.padding(vertical = 16.dp))
+            Text(if (services.isEmpty()) "Add your first monitor to start checking." else "No monitors match. Try clearing your filters.", modifier = Modifier.padding(vertical = 16.dp))
         }
         items(visible, key = { it.id }) { service ->
-            MonitorCard(service, checks[service.id], states[service.id], active, now, onToggle = { onToggle(service, it) }, onClick = { onSelect(service) })
+            MonitorCard(service, checks[service.id], states[service.id], active, now, compact = preferences.compact, absoluteTimes = preferences.absoluteTimes, selected = service.id == selectedId, onToggle = { onToggle(service, it) }, onClick = { onSelect(service) })
         }
-        item { Text("Checks reflect this device and network. Unknown gaps are excluded from success rates.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        item { Text("Checks reflect this device and network. Only UP and DOWN results count toward the percentage.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 
@@ -209,16 +212,16 @@ internal fun relativeCheckAge(time: Long, now: Long): String {
     }
 }
 
-@Composable internal fun MonitorCard(service: ServiceEntry, latest: CheckEntry?, state: AlertState?, active: Boolean, now: Long, onToggle: (Boolean) -> Unit, onClick: () -> Unit) {
+@Composable internal fun MonitorCard(service: ServiceEntry, latest: CheckEntry?, state: AlertState?, active: Boolean, now: Long, compact: Boolean = false, absoluteTimes: Boolean = false, selected: Boolean = false, onToggle: (Boolean) -> Unit, onClick: () -> Unit) {
     val status = MonitorStatus.label(service, latest, active, now, state)
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth().testTag("monitor-${service.id}"), shape = RoundedCornerShape(20.dp)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth().testTag("monitor-${service.id}"), shape = RoundedCornerShape(20.dp), border = if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null) {
+        Column(Modifier.padding(if (compact) 12.dp else 16.dp), verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(Modifier.weight(1f)) {
                     Text(service.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(displayTarget(service.url), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
                 }
-                Switch(service.enabled, onToggle, modifier = Modifier.semantics {
+                Switch(service.enabled, onToggle, enabled = !service.needsReview, modifier = Modifier.semantics {
                     contentDescription = "Monitoring for ${service.name}"
                     stateDescription = if (service.enabled) "Enabled" else "Paused"
                 })
@@ -227,9 +230,10 @@ internal fun relativeCheckAge(time: Long, now: Long): String {
                 StatusBadge(status)
                 latest?.takeUnless { it.skipped }?.let { Text("${it.responseMs} ms", style = MaterialTheme.typography.labelLarge) }
             }
+            if (service.needsReview) Text("Review imported settings before starting", style = MaterialTheme.typography.labelMedium)
             HealthEvidence(service, latest, state, status)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(latest?.let { "Checked ${relativeCheckAge(it.time, now)}" } ?: "No checks yet", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                Text(latest?.let { "Checked ${if (absoluteTimes) settingsTime(it.time) else relativeCheckAge(it.time, now)}" } ?: "No checks yet", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                 if (service.tags.isNotBlank()) Text(service.tags, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
             }
         }

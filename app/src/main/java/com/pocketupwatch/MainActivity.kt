@@ -106,10 +106,23 @@ import kotlin.math.roundToInt
 class MainActivity : ComponentActivity() {
     val requestedServiceId = mutableLongStateOf(0)
     val navigationRequest = mutableIntStateOf(0)
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); requestedServiceId.longValue = intent.getLongExtra("serviceId", 0L); navigationRequest.intValue++ }
-    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); requestedServiceId.longValue = intent.getLongExtra("serviceId", 0L); setContent { val prefs = remember { getSharedPreferences("settings", MODE_PRIVATE) }; var mode by remember { mutableStateOf(prefs.getString("theme", "System") ?: "System") }; MaterialTheme(colorScheme = appColorScheme(mode)) { ThemedSystemBars(this); App(requestedServiceId = requestedServiceId.longValue, navigationRequest = navigationRequest.intValue, mode = mode, onMode = { mode = it; prefs.edit().putString("theme", it).apply() }) } } }
+    val requestedSettings = mutableStateOf<String?>(null)
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); requestedServiceId.longValue = intent.getLongExtra("serviceId", 0L); requestedSettings.value = intent.getStringExtra("settingsPage"); navigationRequest.intValue++ }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        requestedServiceId.longValue = intent.getLongExtra("serviceId", 0L)
+        requestedSettings.value = intent.getStringExtra("settingsPage")
+        setContent {
+            val settings = rememberAppSettings()
+            MaterialTheme(colorScheme = appColorScheme(settings.theme)) {
+                ThemedSystemBars(this)
+                App(requestedServiceId.longValue, navigationRequest.intValue, settings.theme,
+                    onMode = { AppSettings.prefs(this).edit().putString("theme", it).apply() }, settingsRequest = requestedSettings.value)
+            }
+        }
+    }
 }
-@Composable private fun Onboarding(onComplete: () -> Unit) {
+@Composable internal fun Onboarding(onComplete: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var step by rememberSaveable { mutableIntStateOf(0) }
     var refresh by remember { mutableIntStateOf(0) }
@@ -125,13 +138,14 @@ class MainActivity : ComponentActivity() {
     }
     val titles = listOf("Notifications", "Background monitoring", "Scheduled checks")
     val descriptions = listOf(
-        "Allow notifications to see monitoring status and receive alerts when a service changes state.",
-        "Allow unrestricted battery use to improve monitoring in the background. This may use more battery.",
-        "Allow alarms and reminders to help schedule checks while your phone sleeps. Android may still delay checks."
+        "Get outage alerts and monitoring updates.",
+        "Unrestricted battery use helps background checks. It may use more power.",
+        "Allow alarms to help checks run while your phone sleeps. Android may still delay them."
     )
     val advance: () -> Unit = { if (step < 2) step++ else onComplete() }
     Scaffold { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
+        Column(Modifier.widthIn(max = if (LocalAdaptiveWindow.current.tablet) 600.dp else androidx.compose.ui.unit.Dp.Infinity).fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Text("Set up Pocket Upwatch", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text("Step ${step + 1} of 3", style = MaterialTheme.typography.labelLarge)
             LinearProgressIndicator(progress = { (step + 1) / 3f }, modifier = Modifier.fillMaxWidth())
@@ -149,11 +163,12 @@ class MainActivity : ComponentActivity() {
                     }
                 }, modifier = Modifier.fillMaxWidth()) { Text("Allow") }
             }
-            if (!granted) Text("You can continue without allowing this and change it later in settings.", style = MaterialTheme.typography.bodySmall)
+            if (!granted) Text("You can change this later in Settings.", style = MaterialTheme.typography.bodySmall)
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (step > 0) AppSecondaryButton(onClick = { step-- }, modifier = Modifier.weight(1f).fillMaxHeight()) { Text("Back") }
                 AppButton(onClick = advance, modifier = Modifier.weight(1f).fillMaxHeight()) { Text(if (step == 2) "Finish" else "Continue") }
             }
+        }
         }
     }
 }
@@ -161,22 +176,23 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
     val services = dao.services()
     val error = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
     fun save(service: ServiceEntry, onSaved: (Long) -> Unit = {}) = viewModelScope.launch {
+        if (service.enabled && service.needsReview) { error.value = "Review this monitor before starting it."; return@launch }
         try {
             val id = if (service.id == 0L) dao.add(service) else { dao.update(service); service.id }
             if (service.enabled) MonitorService.start(getApplication())
             MonitoringWidget.updateAll(getApplication(), id)
             onSaved(id)
-        } catch (_: Exception) { error.value = "Could not save the monitor" }
+        } catch (_: Exception) { error.value = "Couldn't save this monitor. Try again." }
     }
     fun delete(service: ServiceEntry, done: () -> Unit) = viewModelScope.launch {
-        try { dao.delete(service); MonitoringWidget.updateAll(getApplication(), service.id); done() } catch (_: Exception) { error.value = "Could not delete the monitor" }
+        try { dao.delete(service); MonitoringWidget.updateAll(getApplication(), service.id); done() } catch (_: Exception) { error.value = "Couldn't delete this monitor. Try again." }
     }
     fun setAll(enabled: Boolean) = viewModelScope.launch {
         try {
             dao.setAllEnabled(enabled)
             if (enabled) MonitorService.start(getApplication())
             MonitoringWidget.updateAll(getApplication())
-        } catch (_: Exception) { error.value = "Could not change monitoring state" }
+        } catch (_: Exception) { error.value = "Couldn't update monitoring. Try again." }
     }
 }
 
@@ -191,8 +207,12 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
     return now
 }
 
+@Composable fun App(requestedServiceId: Long, navigationRequest: Int, mode: String, onMode: (String) -> Unit, vm: MonitorViewModel = viewModel(), settingsRequest: String? = null) {
+    AdaptiveRoot { AppContent(requestedServiceId, navigationRequest, mode, onMode, vm, settingsRequest) }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable fun App(requestedServiceId: Long, navigationRequest: Int, mode: String, onMode: (String) -> Unit, vm: MonitorViewModel = viewModel()) {
+@Composable private fun AppContent(requestedServiceId: Long, navigationRequest: Int, mode: String, onMode: (String) -> Unit, vm: MonitorViewModel = viewModel(), settingsRequest: String? = null) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val loaded by vm.services.collectAsStateWithLifecycle(initialValue = null)
     val services = loaded.orEmpty()
@@ -200,6 +220,7 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
     var editingId by rememberSaveable { mutableLongStateOf(0) }
     var selectedId by rememberSaveable { mutableLongStateOf(0) }
     var tools by rememberSaveable { mutableStateOf(false) }
+    var settingsPage by rememberSaveable { mutableStateOf("Settings") }
     val dashboardState = rememberSaveableStateHolder()
     val active by MonitorService.active.collectAsStateWithLifecycle()
     val now = rememberNow()
@@ -210,7 +231,11 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
     val error by vm.error.collectAsStateWithLifecycle()
     val prefs = remember { context.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE) }
     var onboardingComplete by rememberSaveable { mutableStateOf(prefs.getBoolean("onboarding_complete", false)) }
-    LaunchedEffect(requestedServiceId, navigationRequest) { if (requestedServiceId != 0L) selectedId = requestedServiceId }
+    LaunchedEffect(requestedServiceId, navigationRequest, settingsRequest) {
+        if (settingsRequest != null) { settingsPage = settingsRequest; tools = true; adding = false; editingId = 0; selectedId = 0 }
+        else if (requestedServiceId != 0L) { selectedId = requestedServiceId; tools = false; adding = false; editingId = 0 }
+    }
+    LaunchedEffect(Unit) { AppNotifications.channels(context); AppNotifications.remindBackup(context); AppNotifications.scheduleBackupReminder(context) }
     LaunchedEffect(loaded != null) {
         if (loaded?.isNotEmpty() == true) { prefs.edit().putBoolean("onboarding_complete", true).apply(); onboardingComplete = true }
         if (loaded?.any { it.enabled } == true) MonitorService.start(context)
@@ -227,31 +252,69 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
     BackHandler(canNavigateBack) {
         when { editor -> { adding = false; editingId = 0 }; tools -> tools = false; else -> selectedId = 0 }
     }
-    Scaffold(topBar = {
-        AppTopBar(title = when { editor -> if (adding) "Add monitor" else "Edit monitor"; tools -> "Backup and settings"; selected != null -> selected.name; else -> "Pocket Upwatch" },
-            onBack = if (canNavigateBack) ({ when { editor -> { adding = false; editingId = 0 }; tools -> tools = false; else -> selectedId = 0 } }) else null,
-            actions = { if (!canNavigateBack) AppIconButton(onClick = { tools = true }, modifier = Modifier.padding(end = 8.dp)) { Icon(Icons.Default.Settings, "Backup and settings") } })
+    val window = LocalAdaptiveWindow.current
+    val paneSelection = selected ?: services.firstOrNull().takeIf { window.workspace && !tools && !editor }
+    val dashboardBody: @Composable () -> Unit = {
+        val diagnostics = BackgroundDiagnostics.prefs(context)
+        val health = backgroundHealth(services, latestById, active, now,
+            diagnostics.getLong("last_result", 0), diagnostics.getLong("last_error_time", 0), diagnostics.getString("last_error", null),
+            AppNotifications.allowed(context, "alerts"), CheckAlarm.canScheduleExact(context))
+        dashboardState.SaveableStateProvider("dashboard") {
+            MonitorDashboard(services, latestById, alertById, active, now, health, Modifier,
+                onDiagnostics = { settingsPage = "Monitoring"; tools = true }, onSetAll = { vm.setAll(it) },
+                onToggle = { service, enabled -> vm.save(service.copy(enabled = enabled)) }, onSelect = { selectedId = it.id },
+                selectedId = paneSelection?.id.takeIf { window.workspace })
+        }
+    }
+    val latestDashboard by rememberUpdatedState(dashboardBody)
+    val dashboardPane = remember { movableContentOf { latestDashboard() } }
+    val editorPane = remember(vm) { movableContentOf<ServiceEntry?> { item ->
+        ServiceEditor(item, onCancel = { adding = false; editingId = 0 }) { service ->
+            vm.save(service) { id -> adding = false; editingId = 0; selectedId = id }.join()
+        }
+    } }
+    val detailPane = remember(vm) { movableContentOf<ServiceEntry> { item ->
+        Detail(item, vm, Modifier, onEdit = { editingId = it.id }, onDeleted = { selectedId = 0 })
+    } }
+    var navigationLocked by remember { mutableStateOf(false) }
+    val settingsBody: @Composable () -> Unit = {
+        LibraryTools(vm, mode, onMode, Modifier, onExit = { tools = false }, initialPage = settingsPage, entryRequest = navigationRequest, onLock = { navigationLocked = it })
+    }
+    val latestSettings by rememberUpdatedState(settingsBody)
+    val settingsPane = remember { movableContentOf { latestSettings() } }
+    Scaffold(contentWindowInsets = if (tools) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets, topBar = {
+        if (!tools) AppTopBar(title = if (window.tablet && !editor) "Pocket Upwatch" else when { editor -> if (adding) "Add monitor" else "Edit monitor"; selected != null -> selected.name; else -> "Pocket Upwatch" },
+            onBack = if (canNavigateBack && (!window.tablet || editor)) ({ when { editor -> { adding = false; editingId = 0 }; tools -> tools = false; else -> selectedId = 0 } }) else null,
+            actions = {
+                if (window.tablet && !editor) AppButton(onClick = { adding = true }, modifier = Modifier.padding(end = 16.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("Add monitor") }
+                if (!window.tablet && !canNavigateBack) AppIconButton(onClick = { settingsPage = "Settings"; tools = true }, modifier = Modifier.padding(end = 8.dp)) { Icon(Icons.Default.Settings, "Settings") }
+            })
     }, floatingActionButton = {
-        if (!canNavigateBack) ExtendedFloatingActionButton(onClick = { adding = true }, shape = RoundedCornerShape(8.dp), icon = { Icon(Icons.Default.Add, null) }, text = { Text("Add monitor") })
+        if (!window.tablet && !canNavigateBack) ExtendedFloatingActionButton(onClick = { adding = true }, shape = RoundedCornerShape(8.dp), icon = { Icon(Icons.Default.Add, null) }, text = { Text("Add monitor") })
     }) { padding ->
-        when {
-            editor -> ServiceEditor(editing, Modifier.padding(padding), onCancel = { adding = false; editingId = 0 }) { service -> vm.save(service) { id -> adding = false; editingId = 0; selectedId = id }.join() }
-            tools -> LibraryTools(vm, mode, onMode, Modifier.padding(padding))
-            selected != null -> Detail(selected, vm, Modifier.padding(padding), onEdit = { editingId = it.id }, onDeleted = { selectedId = 0 })
-            else -> {
-                val diagnostics = BackgroundDiagnostics.prefs(context)
-                val health = backgroundHealth(services, latestById, active, now,
-                    diagnostics.getLong("last_result", 0), diagnostics.getLong("last_error_time", 0), diagnostics.getString("last_error", null),
-                    androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled(), CheckAlarm.canScheduleExact(context))
-                dashboardState.SaveableStateProvider("dashboard") {
-                    MonitorDashboard(services, latestById, alertById, active, now, health, Modifier.padding(padding),
-                        onDiagnostics = { tools = true }, onSetAll = { vm.setAll(it) },
-                        onToggle = { service, enabled -> vm.save(service.copy(enabled = enabled)) }, onSelect = { selectedId = it.id })
+        Row(Modifier.padding(padding).fillMaxSize()) {
+            if (window.tablet) NavigationRail(Modifier.width(80.dp).fillMaxHeight().testTag("tablet-navigation")) {
+                NavigationRailItem(selected = !tools, onClick = { tools = false }, enabled = !editor && !navigationLocked, icon = { Icon(Icons.Default.MonitorHeart, null) }, label = { Text("Monitors") })
+                NavigationRailItem(selected = tools, onClick = { settingsPage = "Settings"; tools = true }, enabled = !editor && !navigationLocked, icon = { Icon(Icons.Default.Settings, null) }, label = { Text("Settings") })
+            }
+            Box(Modifier.weight(1f).fillMaxHeight()) {
+                when {
+                    tools -> settingsPane()
+                    window.workspace && (editor || paneSelection != null) -> AdaptivePanes(primaryWidth = (window.width * .30f).coerceIn(240.dp, 360.dp), primary = { dashboardPane() }, secondary = {
+                        if (editor) editorPane(editing)
+                        else paneSelection?.let { item -> Column(Modifier.fillMaxSize()) {
+                            Text(item.name, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp).testTag("detail-title"))
+                            Box(Modifier.weight(1f)) { detailPane(item) }
+                        } }
+                    })
+                    editor -> editorPane(editing)
+                    selected != null -> detailPane(selected)
+                    else -> dashboardPane()
                 }
             }
         }
     }
-    if (error != null) AlertDialog(onDismissRequest = { vm.error.value = null }, title = { Text("Could not complete action") }, text = { Text(error!!) }, confirmButton = { AppSecondaryButton(onClick = { vm.error.value = null }) { Text("OK") } })
+    if (error != null) AlertDialog(onDismissRequest = { vm.error.value = null }, title = { Text("Something went wrong") }, text = { Text(error!!) }, confirmButton = { AppSecondaryButton(onClick = { vm.error.value = null }) { Text("OK") } })
 }
 
 @Composable fun ChoiceMenu(label: String, value: String, options: List<String>, onSelect: (String) -> Unit) {
@@ -269,7 +332,8 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
     val incidents by remember(service.id) { vm.dao.incidents(service.id) }.collectAsStateWithLifecycle(initialValue = emptyList())
     val now = rememberNow()
     val summaries by remember(service.id, now / 3_600_000) { vm.dao.rollups(service.id, now - 365 * 86_400_000L) }.collectAsStateWithLifecycle(initialValue = emptyList())
-    var hours by rememberSaveable(service.id) { mutableIntStateOf(24) }
+    val displaySettings = rememberAppSettings()
+    var hours by rememberSaveable(service.id, displaySettings.chartHours) { mutableIntStateOf(displaySettings.chartHours) }
     var confirm by remember { mutableStateOf(false) }
     var checking by remember(service.id) { mutableStateOf(false) }
     val runningChecks by MonitorService.checksInProgress.collectAsStateWithLifecycle()
@@ -278,7 +342,7 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
     var diagnostic by remember { mutableStateOf<ProbeResult?>(null) }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    AdaptiveSections(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         DetailSection(Modifier.testTag("service-status")) {
             Text("Status", style = MaterialTheme.typography.titleMedium)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
@@ -299,7 +363,7 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
                     checkError = null
                     if (service.enabled) {
                         try { MonitorService.start(context, service.id) }
-                        catch (_: Exception) { checkError = "Could not start the check. Try again." }
+                        catch (_: Exception) { checkError = "Couldn't start the check. Try again." }
                     } else {
                         checking = true
                         scope.launch {
@@ -310,7 +374,7 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
                 })
             }
             checkError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            if (!service.enabled) Text("A manual test on a paused monitor does not record history or send alerts.", style = MaterialTheme.typography.bodySmall)
+            if (!service.enabled) Text("Tests on paused monitors don't save history or send alerts.", style = MaterialTheme.typography.bodySmall)
             diagnostic?.let { Text("${if (it.up == null) "UNKNOWN" else if (it.up) "UP" else "DOWN"} · ${it.responseMs} ms · ${it.detail}") }
         }
         DetailSection(Modifier.testTag("service-target")) {
@@ -357,8 +421,8 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
         }
         DetailSection {
             Text("Historical summaries", style = MaterialTheme.typography.titleLarge)
-            Text("Past year: ${summaries.sumOf { it.upCount }} up · ${summaries.sumOf { it.downCount }} down · ${summaries.sumOf { it.skippedCount }} skipped samples")
-            Text("Hourly counts remain after raw-history cleanup; they describe observed samples and do not fill unknown gaps.", style = MaterialTheme.typography.bodySmall)
+            Text("Past year: ${summaries.sumOf { it.upCount }} up · ${summaries.sumOf { it.downCount }} down · ${summaries.sumOf { it.skippedCount }} skipped checks")
+            Text("Hourly summaries stay after older checks are removed. Gaps remain unknown.", style = MaterialTheme.typography.bodySmall)
         }
         RecentChecks(service.id, vm.dao)
         DetailSection {
@@ -379,21 +443,21 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
     val total = stats.upCount + stats.downCount
     DetailSection {
         Row(verticalAlignment = Alignment.CenterVertically) { Text("Availability", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge); AppIconButton(onClick = { fullscreen("Availability") }) { Icon(Icons.Default.Fullscreen, "Fullscreen availability") } }
-        Text(if (total == 0L) "No observed checks" else "${"%.1f".format(stats.upCount * 100.0 / total)}% of observed samples successful")
+        Text(if (total == 0L) "No checks yet" else "${"%.1f".format(stats.upCount * 100.0 / total)}% successful checks")
         Text("${stats.upCount} up · ${stats.downCount} down · ${stats.skippedCount} skipped. Missing checks are unknown.", style = MaterialTheme.typography.bodySmall)
         BucketAvailability(buckets, since, now, Modifier.fillMaxWidth().height(60.dp))
-        Text("Green: up · red: down · gray: skipped · blank: no samples", style = MaterialTheme.typography.bodySmall)
+        Text("Green: up · red: down · gray: skipped · blank: no checks", style = MaterialTheme.typography.bodySmall)
         Text("${hours}h window · older raw checks may have been removed by your retention setting", style = MaterialTheme.typography.bodySmall)
     }
     DetailSection {
         Row(verticalAlignment = Alignment.CenterVertically) { Text("Response time", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge); AppIconButton(onClick = { fullscreen("Response time") }) { Icon(Icons.Default.Fullscreen, "Fullscreen response time") } }
         ResponseChart(buckets.filter { it.upCount + it.downCount > 0 }.mapIndexed { index, b -> CheckEntry(index.toLong(), id, b.time, b.upCount > 0, b.responseMs, "") }, Modifier.fillMaxWidth().height(220.dp))
-        Text("Mean probe duration per time bucket; concurrency queue time is excluded.", style = MaterialTheme.typography.bodySmall)
+        Text("Average check duration for each time bucket.", style = MaterialTheme.typography.bodySmall)
     }
 }
 
 @Composable private fun BucketAvailability(buckets: List<ChartBucket>, since: Long, now: Long, modifier: Modifier) {
-    val summary = "Availability graph: ${buckets.sumOf { it.upCount }} up, ${buckets.sumOf { it.downCount }} down, ${buckets.sumOf { it.skippedCount }} skipped samples"
+    val summary = "Availability graph: ${buckets.sumOf { it.upCount }} up, ${buckets.sumOf { it.downCount }} down, ${buckets.sumOf { it.skippedCount }} skipped checks"
     Canvas(modifier.semantics { contentDescription = summary }) {
         buckets.forEach { b ->
             val x = ((b.time - since).toFloat() / (now - since).coerceAtLeast(1)).coerceIn(0f, 1f) * size.width
@@ -455,6 +519,6 @@ private fun formatTime(time: Long) = DateFormat.getDateTimeInstance(DateFormat.S
             Text(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(points.first().time)), style = MaterialTheme.typography.labelSmall)
             Text(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(points.last().time)), style = MaterialTheme.typography.labelSmall)
         }
-        Text("${points.size} checks · response time in ms", style = MaterialTheme.typography.bodySmall)
+        Text("${points.size} time buckets · milliseconds", style = MaterialTheme.typography.bodySmall)
     }
 }

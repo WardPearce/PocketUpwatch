@@ -1,8 +1,8 @@
 <resources>
     <string name="service_widget_name">Service uptime</string>
     <string name="service_widget_description">Uptime and a 24-hour availability graph for one service.</string>
-    <string name="service_widget_choose">Choose a service</string>
-    <string name="service_widget_period">Uptime · last 24h</string>
+    <string name="service_widget_choose">Choose a monitor</string>
+    <string name="service_widget_period">Successful checks · 24h</string>
     <string name="service_widget_empty_uptime">—</string>
     <string name="service_widget_start">24h ago</string>
     <string name="service_widget_end">Now</string>
