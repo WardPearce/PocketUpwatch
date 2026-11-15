@@ -35,7 +35,7 @@ internal fun formatInterval(seconds: Int): String {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun ProtocolPicker(protocol: String, enabled: Boolean = true, onChange: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    val width = 112.dp + 60.dp * (LocalDensity.current.fontScale - 1f).coerceAtLeast(0f)
+    val width = 124.dp + 36.dp * (LocalDensity.current.fontScale - 1f).coerceAtLeast(0f)
     ExposedDropdownMenuBox(expanded && enabled, onExpandedChange = { if (enabled) expanded = !expanded }, modifier = Modifier.width(width)) {
         OutlinedTextField(protocol.uppercase(), {}, readOnly = true, enabled = enabled, singleLine = true,
             label = { Text("Protocol") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
