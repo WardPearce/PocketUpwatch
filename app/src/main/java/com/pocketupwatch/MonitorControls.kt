@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
@@ -90,7 +91,7 @@ internal fun formatInterval(seconds: Int): String {
 
 @Composable internal fun StatusBadge(status: String) {
     val tint = when (status) {
-        "UP" -> Color(0xff16835c)
+        "UP" -> if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) Color(0xff005c3b) else Color(0xff74ddb2)
         "DOWN" -> MaterialTheme.colorScheme.error
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }

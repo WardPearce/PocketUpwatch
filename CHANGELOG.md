@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Add overview counts and combined status, tag, and search filters, compact sorting, and explicit all-monitor actions.
+- Align displayed health and widgets with confirmed alert thresholds; show latest-check progress and last confirmed health separately from skipped/stale/paused states.
+- Offer Save paused after failed or unknown save-time checks, without another probe or recording history.
+- Surface stopped/delayed monitoring, recent background errors, and permission issues in an overview banner linked to diagnostics.
+- Improve monitor-switch accessibility, relative check timestamps, narrow-screen/large-font filter layouts, and healthy-badge text contrast in both themes.
+- Add behavioral regressions and native-rendered screenshots of the overview, filtering, background health, threshold progress, and paused-save workflow.
+
 ## 0.1.8
 
 - Apply Require Internet to background, manual, and save-time checks through one shared connectivity guard.

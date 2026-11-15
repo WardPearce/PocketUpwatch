@@ -27,7 +27,8 @@ class MonitoringWidget : AppWidgetProvider() {
                     val dao = MonitorDb.get(context).dao()
                     val services = dao.allServices()
                     val checks = dao.latestChecks().first().associateBy { it.serviceId }
-                    val states = services.map { MonitorStatus.label(it, checks[it.id], MonitorService.active.value, System.currentTimeMillis()) }
+                    val alerts = dao.alertStates().first().associateBy { it.serviceId }
+                    val states = services.map { MonitorStatus.label(it, checks[it.id], MonitorService.active.value, System.currentTimeMillis(), alerts[it.id]) }
                     val manager = AppWidgetManager.getInstance(context)
                     ids.forEach { id ->
                         val views = RemoteViews(context.packageName, R.layout.monitoring_widget)

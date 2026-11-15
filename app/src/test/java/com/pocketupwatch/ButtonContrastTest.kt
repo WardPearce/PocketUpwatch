@@ -18,6 +18,8 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.ColorUtils
 import java.io.File
@@ -41,6 +43,35 @@ class ButtonContrastTest {
     @Config(qualifiers = "w412dp-h915dp-night-xxhdpi")
     fun lightButtonsHaveVisibleBoundariesEvenWhenSystemThemeIsDark() = verifyPalettes(false)
     @Test fun darkButtonsKeepTheirOriginalFilledStyleAcrossAccentColors() = verifyPalettes(true)
+
+    @Test fun healthyBadgeTextHasReadableContrastInBothThemes() {
+        var dark by mutableStateOf(false)
+        compose.setContent {
+            view = LocalView.current
+            MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
+                Surface(Modifier.fillMaxSize()) { Column(Modifier.padding(16.dp)) { DetailSection { StatusBadge("UP") } } }
+            }
+        }
+        for (mode in listOf(false, true)) {
+            compose.runOnIdle { dark = mode }
+            compose.waitForIdle()
+            val text = compose.onNodeWithText("UP")
+            val layouts = mutableListOf<TextLayoutResult>()
+            text.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+            val foreground = layouts.single().layoutInput.style.color.toArgb()
+            val bounds = text.fetchSemanticsNode().boundsInRoot
+            val bitmap = drawScreen()
+            try {
+                // Text semantics bounds cover the glyph layout; sample the badge's padded area beside it.
+                val background = bitmap.getPixel(bounds.left.roundToInt() - 8, bounds.center.y.roundToInt())
+                val contrast = ColorUtils.calculateContrast(foreground, background)
+                assertTrue("UP text needs 4.5:1 contrast in ${if (mode) "dark" else "light"} mode (actual $contrast)", contrast >= 4.5)
+                assertTrue("The readable color must actually be rendered", (bounds.top.roundToInt() until bounds.bottom.roundToInt()).any { y ->
+                    (bounds.left.roundToInt() until bounds.right.roundToInt()).any { x -> bitmap.getPixel(x, y) == foreground }
+                })
+            } finally { bitmap.recycle() }
+        }
+    }
 
     private fun verifyPalettes(dark: Boolean) {
         // Representative Material dynamic-color roles, including the pale blue from the report.

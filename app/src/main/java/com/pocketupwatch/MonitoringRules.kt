@@ -70,15 +70,33 @@ internal object AlertPolicy {
 }
 
 internal object MonitorStatus {
-    fun label(service: ServiceEntry, latest: CheckEntry?, active: Boolean, now: Long): String = when {
+    fun confirmed(service: ServiceEntry, latest: CheckEntry?, state: AlertState?): String =
+        state?.confirmed ?: when {
+            latest == null || latest.skipped -> "UNKNOWN"
+            latest.up -> "UP"
+            service.failureThreshold == 1 -> "DOWN"
+            else -> "UNKNOWN"
+        }
+
+    fun label(service: ServiceEntry, latest: CheckEntry?, active: Boolean, now: Long, state: AlertState? = null): String = when {
         !service.enabled -> "PAUSED"
         service.maintenanceUntil > now -> "MAINTENANCE"
         !active -> "STOPPED"
         latest == null -> "PENDING"
         now - latest.time > maxOf(service.intervalSeconds * 2_000L, 120_000L) -> "STALE"
         latest.skipped -> "UNKNOWN"
-        latest.up -> "UP"
-        else -> "DOWN"
+        else -> confirmed(service, latest, state)
+    }
+
+    fun evidence(service: ServiceEntry, latest: CheckEntry?, state: AlertState?): String = when {
+        latest == null -> "Waiting for the first check"
+        latest.skipped -> "Latest check skipped · ${latest.detail}"
+        !latest.up && confirmed(service, latest, state) != "DOWN" ->
+            "Latest check failed · ${(state?.downStreak ?: 1).coerceAtLeast(1)} of ${service.failureThreshold} failures"
+        latest.up && confirmed(service, latest, state) == "DOWN" ->
+            "Latest check passed · ${(state?.upStreak ?: 1).coerceAtLeast(1)} of ${service.recoveryThreshold} successes to recover"
+        latest.up -> "Latest check passed · ${latest.detail}"
+        else -> "Latest check failed · ${latest.detail}"
     }
 }
 

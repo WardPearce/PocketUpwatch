@@ -6,7 +6,11 @@ An Android uptime monitor built with Kotlin, Compose, and Room. Monitor HTTP(S),
 
 The add/edit form groups service details and monitoring essentials into cards. Expand request, response, authentication, alerts, or organization sections only when needed; closed sections summarize their current settings. Save and Cancel stay visible at the bottom, and existing settings are preserved when editing.
 
-Add a target, choose a check interval from 5 minutes to 24 hours with the interval slider, and save it. Save checks the target first; a failed or unknown check keeps the editor open and shows an error. Existing intervals below 5 minutes are raised to 5 minutes when the database opens. Monitors begin checking when saved; each can be paused independently. Search names, targets, or tags, sort by status/name/tag, or pause/resume the whole collection.
+Add a target, choose a check interval from 5 minutes to 24 hours with the interval slider, and save it. Save checks the target first; a failed or unknown check keeps the editor open, shows an error, and offers **Save paused**. This saves a valid configuration without another probe, history, or alerts so you can enable it when the target is ready. Invalid configurations cannot be saved. Existing intervals below 5 minutes are raised to 5 minutes when the database opens. Monitors begin checking after a successful save; each can be paused independently.
+
+The overview shows tappable All, Down, Unknown, and Paused counts. Status filters combine with name/target/tag search and exact tag chips; Clear filters resets them together. Unknown includes skipped, stale, stopped, and pending checks. Maintenance stays separate. Sort the collection by status/name/tag, or use the actions menu to pause/resume **all** monitors, including those outside the current filters. Cards show relative check age and labeled monitoring switches.
+
+Health badges follow the same confirmed failure/recovery thresholds as incidents and alerts. A separate latest-check message shows progress such as “1 of 3 failures” or “1 of 2 successes to recover.” Skipped, stale, paused, and stopped states remain explicit and can show the last confirmed health; they never imply recovery. Both home-screen widgets use the same health logic. An overview banner links to background diagnostics when monitoring stops, checks become stale, a new background error occurs, or notification/alarm access needs attention.
 
 | Protocol | Example | What it checks |
 | --- | --- | --- |

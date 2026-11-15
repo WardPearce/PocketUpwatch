@@ -40,7 +40,7 @@ data class Incident(@PrimaryKey(autoGenerate = true) val id: Long = 0, val servi
 data class HourlyStats(val serviceId: Long, val hour: Long, val upCount: Long = 0, val downCount: Long = 0, val skippedCount: Long = 0, val responseTotal: Long = 0, val responseMax: Long = 0)
 data class PeriodStats(val upCount: Long = 0, val downCount: Long = 0, val skippedCount: Long = 0)
 data class ChartBucket(val time: Long, val upCount: Long, val downCount: Long, val skippedCount: Long, val responseMs: Long)
-data class ServiceWidgetData(val service: ServiceEntry?, val latest: CheckEntry?, val buckets: List<ChartBucket>)
+data class ServiceWidgetData(val service: ServiceEntry?, val latest: CheckEntry?, val buckets: List<ChartBucket>, val alertState: AlertState? = null)
 
 data class HistoryVersion(val total: Int = 0, val latestId: Long = 0)
 data class HistoryPage(val checks: List<CheckEntry>, val total: Int, val page: Int, val anchorId: Long) {
@@ -75,7 +75,7 @@ data class HistoryPage(val checks: List<CheckEntry>, val total: Int, val page: I
     @Transaction suspend fun widgetData(id: Long, since: Long, until: Long, bucketMs: Long): ServiceWidgetData {
         val service = getService(id)
         return if (service == null) ServiceWidgetData(null, null, emptyList())
-        else ServiceWidgetData(service, latest(id), widgetBuckets(id, since, until, bucketMs))
+        else ServiceWidgetData(service, latest(id), widgetBuckets(id, since, until, bucketMs), alertState(id))
     }
     @Query("SELECT * FROM incidents WHERE serviceId = :id ORDER BY startedAt DESC LIMIT 100") fun incidents(id: Long): Flow<List<Incident>>
     @Query("SELECT * FROM incidents WHERE serviceId = :id ORDER BY startedAt") suspend fun exportIncidents(id: Long): List<Incident>
@@ -84,6 +84,8 @@ data class HistoryPage(val checks: List<CheckEntry>, val total: Int, val page: I
     @Insert suspend fun record(check: CheckEntry)
     @Query("SELECT * FROM services WHERE id = :id") suspend fun getService(id: Long): ServiceEntry?
     @Query("SELECT * FROM alert_states WHERE serviceId = :id") suspend fun alertState(id: Long): AlertState?
+    @Query("SELECT * FROM alert_states WHERE serviceId = :id") fun alertStateFlow(id: Long): Flow<AlertState?>
+    @Query("SELECT * FROM alert_states") fun alertStates(): Flow<List<AlertState>>
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun saveAlertState(state: AlertState)
     @Insert suspend fun openIncident(incident: Incident)
     @Query("UPDATE incidents SET endedAt = :time WHERE serviceId = :id AND endedAt IS NULL") suspend fun closeIncidents(id: Long, time: Long)
