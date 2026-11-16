@@ -146,9 +146,16 @@ internal class SettingsViewModel @JvmOverloads constructor(app: Application, val
                 else -> "Imported ${rows.size} monitors. They're paused until you're ready."
             }
             if (preferences != null) {
-                try { AppSettings.write(AppSettings.prefs(getApplication()), preferences); AppNotifications.scheduleBackupReminder(getApplication()) }
+                try { AppSettings.write(AppSettings.prefs(getApplication()), preferences); AppNotifications.scheduleBackupReminder(getApplication()); refreshAlertReminders() }
                 catch (_: Exception) { message = "Monitors imported. App settings couldn't be restored." }
             }
+        }
+    }
+    fun refreshAlertReminders() {
+        viewModelScope.launch {
+            try { AlertReminderAlarm.reconcile(getApplication(), dao) }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { BackgroundDiagnostics.failure(getApplication(), "Reminder scheduling", e) }
         }
     }
     fun previewCleanup(days: Int) = task {

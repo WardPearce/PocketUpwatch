@@ -64,11 +64,11 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
     var timeout by rememberSaveable(editId) { mutableStateOf((existing?.timeoutSeconds ?: defaults.timeoutSeconds).toString()) }
     var redirects by rememberSaveable(editId) { mutableStateOf(existing?.followRedirects ?: true) }
     var validated by rememberSaveable(editId) { mutableStateOf(existing?.requireValidatedInternet ?: defaults.requireInternet) }
-    var failures by rememberSaveable(editId) { mutableStateOf((existing?.failureThreshold ?: defaults.failures).toString()) }
-    var recoveries by rememberSaveable(editId) { mutableStateOf((existing?.recoveryThreshold ?: defaults.recoveries).toString()) }
+    var failures by rememberSaveable(editId) { mutableIntStateOf(existing?.failureThreshold ?: defaults.failures) }
+    var recoveries by rememberSaveable(editId) { mutableIntStateOf(existing?.recoveryThreshold ?: defaults.recoveries) }
     var reviewed by rememberSaveable(editId) { mutableStateOf(existing?.needsReview != true) }
     var initialDown by rememberSaveable(editId) { mutableStateOf(existing?.notifyInitialDown ?: true) }
-    var repeat by rememberSaveable(editId) { mutableStateOf((existing?.repeatMinutes ?: 0).toString()) }
+    var repeat by rememberSaveable(editId) { mutableIntStateOf(AlertReminders.normalize(existing?.repeatMinutes ?: AlertReminders.DEFAULT_MINUTES)) }
     val maintenance = existing?.maintenanceUntil ?: 0
     var warningDays by rememberSaveable(editId) { mutableStateOf((existing?.certificateWarnDays ?: 30).toString()) }
     var dnsExpected by rememberSaveable(editId) { mutableStateOf(existing?.dnsExpected ?: "") }
@@ -88,7 +88,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
         }
         values.toMap()
     } }
-    val draft = ServiceEntry(id = editId ?: 0, name = name.trim(), url = url, intervalSeconds = interval, enabled = existing?.enabled ?: true, expectedCode = if (anySuccess) 0 else status.toIntOrNull() ?: -1, bodyType = if (http) bodyType else "None", expectedBody = expectedBody, method = if (http) method else "GET", requestBody = requestBody, jsonPath = jsonPath, timeoutSeconds = timeout.toIntOrNull() ?: 0, followRedirects = redirects, requireValidatedInternet = validated, failureThreshold = failures.toIntOrNull() ?: 0, recoveryThreshold = recoveries.toIntOrNull() ?: 0, notifyInitialDown = initialDown, repeatMinutes = repeat.toIntOrNull() ?: -1, maintenanceUntil = maintenance, certificateWarnDays = warningDays.toIntOrNull() ?: -1, dnsExpected = dnsExpected, tags = tags.trim(), xmlStructural = xmlStructural, xmlIgnoreWhitespace = xmlIgnoreWhitespace)
+    val draft = ServiceEntry(id = editId ?: 0, name = name.trim(), url = url, intervalSeconds = interval, enabled = existing?.enabled ?: true, expectedCode = if (anySuccess) 0 else status.toIntOrNull() ?: -1, bodyType = if (http) bodyType else "None", expectedBody = expectedBody, method = if (http) method else "GET", requestBody = requestBody, jsonPath = jsonPath, timeoutSeconds = timeout.toIntOrNull() ?: 0, followRedirects = redirects, requireValidatedInternet = validated, failureThreshold = failures, recoveryThreshold = recoveries, notifyInitialDown = initialDown, repeatMinutes = repeat, maintenanceUntil = maintenance, certificateWarnDays = warningDays.toIntOrNull() ?: -1, dnsExpected = dnsExpected, tags = tags.trim(), xmlStructural = xmlStructural, xmlIgnoreWhitespace = xmlIgnoreWhitespace)
     var bodyValidation by remember(bodyType, expectedBody, jsonPath, http) { mutableStateOf<String?>(if (!http || bodyType == "None") null else "Checking response…") }
     LaunchedEffect(bodyType, expectedBody, jsonPath, http) {
         if (http && bodyType != "None") {
@@ -195,12 +195,12 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
             if (protocol == "tls") EditorSection("Certificate expiry", "Warn within $warningDays days of expiry", Icons.Outlined.VerifiedUser, collapsible = true, enabled = !busy) {
                 OutlinedTextField(warningDays, { warningDays = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Expiry warning (days)") }, supportingText = { Text("Between 0 and 365 days") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
             }
-            EditorSection("Alerts", "$failures ${if (failures == "1") "failure" else "failures"} to mark down", Icons.Outlined.Notifications, collapsible = true, enabled = !busy) {
+            EditorSection("Alerts", "$failures ${if (failures == 1) "failure" else "failures"} to mark down · ${if (repeat == 0) "Reminders off" else "Repeat every ${formatReminderInterval(repeat)}"}", Icons.Outlined.Notifications, collapsible = true, enabled = !busy) {
                 Text("State changes", style = MaterialTheme.typography.titleSmall)
-                OutlinedTextField(failures, { failures = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Failures before marking down") }, supportingText = { Text("1–20 checks in a row") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                OutlinedTextField(recoveries, { recoveries = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Successes before recovery") }, supportingText = { Text("1–20 checks in a row") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                ConfirmationSlider(failures, recovery = false, enabled = !busy) { failures = it }
+                ConfirmationSlider(recoveries, recovery = true, enabled = !busy) { recoveries = it }
                 EditorToggle("Alert on the first outage", "Notify even if this monitor hasn't been up yet.", initialDown, !busy) { initialDown = it }
-                OutlinedTextField(repeat, { repeat = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Repeat alert (minutes)") }, supportingText = { Text("0 turns reminders off") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                RepeatAlertSlider(repeat, existing?.repeatMinutes, enabled = !busy) { repeat = it }
 
             }
             EditorSection("Organization", if (tags.isBlank()) "Add optional tags" else tags, Icons.AutoMirrored.Outlined.Label, collapsible = true, enabled = !busy) {

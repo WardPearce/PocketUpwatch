@@ -47,12 +47,22 @@ class MonitoringRulesTest {
         assertEquals(0, skipped.state.downStreak)
         assertEquals("UP", skipped.state.confirmed)
     }
-    @Test fun firstDownAndRepeatAlertsAreConfigurable() {
+    @Test fun remindersUseTheirOwnDeadlineAndChecksDoNotSendRepeats() {
+        assertEquals(60, service.repeatMinutes)
+        val old = AlertState(1, confirmed = "DOWN", lastAlertAt = 1_000)
+        val snapshot = ReminderSnapshot(service, old, check(false))
+        assertEquals(3_601_000L, ReminderPolicy.nextAt(snapshot))
+        assertEquals(301_000L, ReminderPolicy.nextAt(snapshot.copy(service = service.copy(repeatMinutes = 1))))
+        assertNull(ReminderPolicy.nextAt(snapshot.copy(service = service.copy(repeatMinutes = 0))))
+        assertNull(AlertPolicy.evaluate(old, service, check(false, 86_400_000)).notification)
+        assertEquals(old.lastAlertAt, AlertPolicy.evaluate(old, service, check(false, 86_400_000)).state.lastAlertAt)
+    }
+    @Test fun firstDownAndRecoveryAlertsAreConfigurable() {
         val quiet = service.copy(failureThreshold = 1, notifyInitialDown = false)
         val initial = AlertPolicy.evaluate(AlertState(1), quiet, check(false))
         assertEquals("DOWN", initial.state.confirmed)
         assertNull(initial.notification)
-        assertEquals("is still down", AlertPolicy.evaluate(initial.state, quiet.copy(repeatMinutes = 1), check(false, 61_000)).notification)
+        assertNull(AlertPolicy.evaluate(initial.state, quiet.copy(repeatMinutes = 5), check(false, 301_000)).notification)
         assertEquals("is down", AlertPolicy.evaluate(AlertState(1), quiet.copy(notifyInitialDown = true), check(false)).notification)
         val twoSuccesses = service.copy(recoveryThreshold = 2)
         val firstUp = AlertPolicy.evaluate(initial.state, twoSuccesses, check(true))

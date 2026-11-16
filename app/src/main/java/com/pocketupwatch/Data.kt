@@ -24,7 +24,8 @@ data class ServiceEntry(
     @ColumnInfo(defaultValue = "2") val failureThreshold: Int = 1,
     @ColumnInfo(defaultValue = "1") val recoveryThreshold: Int = 1,
     @ColumnInfo(defaultValue = "1") val notifyInitialDown: Boolean = true,
-    @ColumnInfo(defaultValue = "0") val repeatMinutes: Int = 0,
+    // Keep the legacy SQL default so existing disabled reminders stay off.
+    @ColumnInfo(defaultValue = "0") val repeatMinutes: Int = AlertReminders.DEFAULT_MINUTES,
     @ColumnInfo(defaultValue = "0") val maintenanceUntil: Long = 0,
     @ColumnInfo(defaultValue = "30") val certificateWarnDays: Int = 30,
     @ColumnInfo(defaultValue = "''") val dnsExpected: String = "",
@@ -100,6 +101,24 @@ data class HistoryPage(val checks: List<CheckEntry>, val total: Int, val page: I
     @Query("SELECT * FROM alert_states WHERE serviceId = :id") suspend fun alertState(id: Long): AlertState?
     @Query("SELECT * FROM alert_states WHERE serviceId = :id") fun alertStateFlow(id: Long): Flow<AlertState?>
     @Query("SELECT * FROM alert_states") fun alertStates(): Flow<List<AlertState>>
+    @Query("SELECT services.* FROM services JOIN alert_states ON services.id = alert_states.serviceId WHERE services.enabled = 1 AND services.needsReview = 0 AND services.repeatMinutes > 0 AND alert_states.confirmed = 'DOWN'") suspend fun reminderServices(): List<ServiceEntry>
+    @Query("SELECT * FROM alert_states") suspend fun alertStatesSnapshot(): List<AlertState>
+    @Query("SELECT checks.* FROM services JOIN checks ON checks.id = (SELECT id FROM checks WHERE serviceId = services.id ORDER BY time DESC, id DESC LIMIT 1)") suspend fun latestChecksSnapshot(): List<CheckEntry>
+    @Query("UPDATE alert_states SET lastAlertAt = :now WHERE lastAlertAt > :now") suspend fun rebaseFutureAlertTimes(now: Long)
+    @Query("UPDATE alert_states SET lastAlertAt = :now WHERE serviceId = :id") suspend fun markAlertDelivered(id: Long, now: Long)
+    @Query("UPDATE alert_states SET lastAlertAt = :previous WHERE serviceId = :id AND lastAlertAt = :claimed") suspend fun restoreReminderTime(id: Long, claimed: Long, previous: Long)
+    @Transaction suspend fun reminderSnapshots(): List<ReminderSnapshot> {
+        val states = alertStatesSnapshot().associateBy { it.serviceId }
+        val latest = latestChecksSnapshot().associateBy { it.serviceId }
+        return reminderServices().map { ReminderSnapshot(it, states[it.id], latest[it.id]) }
+    }
+    @Transaction suspend fun claimReminder(id: Long, now: Long): ReminderSnapshot? {
+        val service = getService(id) ?: return null
+        val snapshot = ReminderSnapshot(service, alertState(id), latest(id))
+        if (ReminderPolicy.nextAt(snapshot)?.let { it <= now } != true) return null
+        saveAlertState(snapshot.state!!.copy(lastAlertAt = now))
+        return snapshot
+    }
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun saveAlertState(state: AlertState)
     @Insert suspend fun openIncident(incident: Incident)
     @Query("UPDATE incidents SET endedAt = :time WHERE serviceId = :id AND endedAt IS NULL") suspend fun closeIncidents(id: Long, time: Long)
@@ -155,6 +174,7 @@ abstract class MonitorDb : RoomDatabase() {
         internal val MINIMUM_INTERVAL_CALLBACK = object : RoomDatabase.Callback() {
             override fun onOpen(db: SupportSQLiteDatabase) {
                 db.execSQL("UPDATE services SET intervalSeconds = 300 WHERE intervalSeconds < 300")
+                db.execSQL("UPDATE services SET repeatMinutes = 5 WHERE repeatMinutes BETWEEN 1 AND 4")
             }
         }
         @Volatile private var instance: MonitorDb? = null

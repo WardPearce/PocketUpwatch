@@ -20,7 +20,7 @@ Pocket Upwatch checks whether your services are reachable, tracks how they respo
 
 - **See what needs attention.** Clear UP, DOWN, unknown, and paused states, with search, tags, filters, and sorting.
 - **Look back over time.** Availability and response-time charts, recent checks, and an incident history help you understand outages.
-- **Choose when to be alerted.** Set how many failures confirm an outage, receive recovery alerts, and add repeat reminders. Quiet hours and snooze mute alerts while checks continue; maintenance pauses checks and alerts.
+- **Choose when to be alerted.** Set how many failures confirm an outage, receive recovery alerts, and adjust repeat reminders with a slider. New monitors default to hourly reminders, with a 5-minute minimum and a switch to turn repeats off. Reminders use Android alarms independently of service checks; Android may delay delivery. Quiet hours and snooze mute alerts while checks continue; maintenance pauses checks and alerts.
 - **Check on your schedule.** Choose intervals from 5 minutes to 24 hours, test a service immediately, or pause individual monitors or the whole list.
 - **Monitor your home network.** Check local servers and devices, including networks without Internet access.
 - **Go beyond a connection check.** Check for an expected website or API response, use authentication, and get certificate-expiry warnings.
@@ -63,7 +63,7 @@ Dark-mode app previews with sample monitors and data. Select an image to view it
 | :---: | :---: |
 | <a href="previews/tablet-overview-dark.png"><img src="previews/tablet-overview-dark.png" alt="Tablet workspace with a monitor list beside service status, schedule, availability, and response-time charts" width="400" /></a> | <a href="previews/tablet-settings-dark.png"><img src="previews/tablet-settings-dark.png" alt="Tablet settings with categories beside the backup and restore page" width="400" /></a> |
 
-[Expected response on a tablet](previews/tablet-expected-response-dark.png) · [Maintenance controls](previews/maintenance-dark.png)
+[Expected response on a tablet](previews/tablet-expected-response-dark.png) · [Maintenance controls](previews/maintenance-dark.png) · [Repeat alert reminders](previews/alert-reminders-dark.png)
 
 More views: [tablet editor](previews/tablet-editor-dark.png) · [portrait tablet](previews/tablet-portrait-dark.png) · [unfolded foldable](previews/foldable-unfolded-dark.png) · [tabletop fold](previews/foldable-tabletop-dark.png).
 

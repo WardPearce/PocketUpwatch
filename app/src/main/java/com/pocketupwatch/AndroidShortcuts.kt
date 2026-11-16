@@ -71,7 +71,7 @@ class MonitoringTile : TileService() {
                 val services = dao.allServices()
                 if (services.isNotEmpty()) {
                     val enable = services.none { it.enabled }
-                    dao.setAllEnabled(enable)
+                    AlertReminderAlarm.update(this@MonitoringTile, dao) { dao.setAllEnabled(enable) }
                     if (enable) runCatching { MonitorService.start(this@MonitoringTile) }
                     MonitoringWidget.updateAll(this@MonitoringTile)
                 }

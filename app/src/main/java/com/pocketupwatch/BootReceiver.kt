@@ -16,7 +16,10 @@ class BootReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                if (MonitorDb.get(context).dao().services().first().any { it.enabled }) {
+                val dao = MonitorDb.get(context).dao()
+                try { AlertReminderAlarm.reconcile(context, dao) }
+                catch (e: Exception) { BackgroundDiagnostics.failure(context, "Reminder restore", e) }
+                if (dao.services().first().any { it.enabled }) {
                     runCatching { MonitorService.start(context) }.onFailure {
                         if (it is Exception) BackgroundDiagnostics.failure(context, "Boot restart blocked", it)
                     }

@@ -76,7 +76,7 @@ internal object BackupCodec {
             val obj = element.asJsonObject
             val service = gson.fromJson(obj, ServiceEntry::class.java)
             val headers = obj.getAsJsonObject("headers")?.entrySet()?.associate { it.key to it.value.asString } ?: emptyMap()
-            val restored = service.copy(bodyType = if (service.bodyType == "YML") "YAML" else service.bodyType, id = 0, enabled = false, headersCiphertext = encrypt(headers), needsReview = obj.get("needsReview")?.asBoolean == true)
+            val restored = service.copy(repeatMinutes = AlertReminders.normalize(service.repeatMinutes), bodyType = if (service.bodyType == "YML") "YAML" else service.bodyType, id = 0, enabled = false, headersCiphertext = encrypt(headers), needsReview = obj.get("needsReview")?.asBoolean == true)
             require(ServiceValidation.error(restored, headers, allowIncompleteBody = obj.get("needsReview")?.asBoolean == true) == null) { "Invalid monitor in backup" }
             restored
         }
@@ -116,7 +116,7 @@ internal object ServiceValidation {
         service.method !in listOf("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE") -> "Unsupported HTTP method"
         service.method == "HEAD" && service.bodyType != "None" -> "HEAD requests cannot match a body"
         service.failureThreshold !in 1..20 || service.recoveryThreshold !in 1..20 -> "Alert thresholds must be between 1 and 20"
-        service.repeatMinutes !in 0..10080 -> "Reminder interval must be between 0 and 10080 minutes"
+        service.repeatMinutes != 0 && service.repeatMinutes !in AlertReminders.MIN_MINUTES..AlertReminders.MAX_MINUTES -> "Choose a reminder interval from 5 minutes to 7 days, or turn reminders off."
         service.dnsExpected.isNotBlank() && service.dnsExpected.split(',').any { !isIp(it.trim()) } -> "Expected DNS answers must be comma-separated IPv4 or IPv6 addresses"
         service.certificateWarnDays !in 0..365 -> "Certificate warning must be between 0 and 365 days"
         headers.any { (key, value) -> !Regex("[!#$%&'*+.^_`|~0-9A-Za-z-]+").matches(key) || value.any { it == '\r' || it == '\n' || it.code < 32 || it.code > 126 } } -> "Invalid HTTP header"

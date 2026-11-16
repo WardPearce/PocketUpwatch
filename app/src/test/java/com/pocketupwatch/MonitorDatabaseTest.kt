@@ -21,6 +21,24 @@ class MonitorDatabaseTest {
     private val dao = db.dao()
     private val template = ServiceEntry(name = "API", url = "https://example.com", intervalSeconds = 300, failureThreshold = 2)
     @After fun close() { db.close() }
+    @Test fun openingTheDatabaseRaisesShortRemindersWithoutEnablingDisabledOnes() = runBlocking {
+        val name = "reminder-minimum.db"
+        context.deleteDatabase(name)
+        fun open() = Room.databaseBuilder(context, MonitorDb::class.java, name).addCallback(MonitorDb.MINIMUM_INTERVAL_CALLBACK).allowMainThreadQueries().build()
+        val initial = open()
+        try {
+            initial.dao().add(template.copy(id = 1, repeatMinutes = 1))
+            initial.dao().add(template.copy(id = 2, repeatMinutes = 0))
+            initial.dao().add(template.copy(id = 3))
+        } finally { initial.close() }
+        val stored = open()
+        try {
+            assertEquals(5, stored.dao().getService(1)!!.repeatMinutes)
+            assertEquals(0, stored.dao().getService(2)!!.repeatMinutes)
+            assertEquals(60, stored.dao().getService(3)!!.repeatMinutes)
+        } finally { stored.close(); context.deleteDatabase(name) }
+    }
+
     @Test fun maintenanceUpdateChangesOnlyTheWindow() = runBlocking {
         val id = dao.add(template.copy(enabled = false, headersCiphertext = "keep-credentials", bodyType = "YAML", expectedBody = "ok: true"))
         val before = dao.getService(id)!!
