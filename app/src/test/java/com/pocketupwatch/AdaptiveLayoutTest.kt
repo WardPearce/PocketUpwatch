@@ -14,6 +14,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.*
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import org.junit.*
 import org.junit.Assert.*
@@ -70,6 +72,10 @@ class AdaptiveLayoutTest {
     }
     @Test fun tabletResponseCheckPreview() {
         runBlocking { db.dao().update(monitors[0].copy(bodyType = "YAML", expectedBody = "status: ready\nchecks:\n  database: true\n  cache: true\nversion: 3")) }
+        runBlocking { repeat(12) { index ->
+            val start = now - (index + 2) * 3_600_000L
+            db.dao().openIncident(Incident(serviceId = monitors[0].id, startedAt = start, endedAt = start + 600_000, reason = "Example outage ${index + 1}", downChecks = 2))
+        } }
         show()
         choose(monitors[0].id)
         compose.onNodeWithTag("expected-response").performScrollTo()
@@ -77,6 +83,16 @@ class AdaptiveLayoutTest {
         // Wait for asynchronous syntax analysis before drawing the native Android view.
         compose.runOnIdle { }
         screenshot("tablet-expected-response-dark")
+        compose.onNodeWithText("Availability").performScrollTo()
+        screenshot("availability-timeline-dark")
+        compose.onNodeWithTag("incident-history").performScrollTo().performScrollToNode(hasText("Example outage 12", substring = true))
+        compose.onNodeWithText("Example outage 12", substring = true).assertIsDisplayed()
+        screenshot("incident-history-dark")
+        compose.onNodeWithText("Delete monitor").performScrollTo()
+        compose.onNodeWithText("4h").performClick()
+        compose.waitUntil(10_000) { compose.onNodeWithText("4h").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.Selected] }
+        screenshot("maintenance-toggle-dark")
+        compose.waitUntil(10_000) { vm.viewModelScope.coroutineContext.job.children.none() }
     }
     @Test fun tabletKeepsListAndDetailsVisibleAndSelectionWorks() {
         show()

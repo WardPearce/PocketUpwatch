@@ -98,6 +98,9 @@ class DashboardUiTest {
         screenshot("improved-dashboard-dark")
         compose.onNodeWithContentDescription("Monitoring for Production API").performClick()
         assertEquals(1L to false, toggled)
+        compose.onNodeWithTag("filter-DOWN").performClick()
+        compose.onNodeWithText("Clear filters").assertIsDisplayed()
+        screenshot("clear-filters-dark")
     }
 
     @Test fun diagnosticsBannerNavigatesAndBulkActionsExplicitlyAffectAllMonitors() {

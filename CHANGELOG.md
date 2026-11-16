@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.14
+
+- Toggle maintenance by tapping a duration; tap the selected duration again to turn it off. The selected window remains highlighted as time passes.
+- Add date/time labels and timeline guides to availability charts, including fullscreen.
+- Keep incident history within a scrollable panel with a maximum height.
+- Make Clear filters easier to find, with an icon and active-filter count.
+
 ## 0.1.13
 
 - Choose failure and recovery confirmation counts with 1–20 check sliders, both in the service editor and new-monitor defaults.

@@ -184,8 +184,8 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
             onSaved(id)
         } catch (_: Exception) { error.value = "Couldn't save this monitor. Try again." }
     }
-    fun setMaintenance(id: Long, until: Long) = viewModelScope.launch {
-        try { AlertReminderAlarm.update(getApplication(), dao) { dao.setMaintenance(id, until) }; MonitoringWidget.updateAll(getApplication(), id) }
+    fun setMaintenance(id: Long, until: Long, hours: Int) = viewModelScope.launch {
+        try { AlertReminderAlarm.update(getApplication(), dao) { dao.setMaintenance(id, until, hours) }; MonitoringWidget.updateAll(getApplication(), id) }
         catch (_: Exception) { error.value = "Couldn't update maintenance. Try again." }
     }
     fun delete(service: ServiceEntry, done: () -> Unit) = viewModelScope.launch {
@@ -428,9 +428,11 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
             Text("Incident history (latest 100)", style = MaterialTheme.typography.titleLarge)
             Text("${service.failureThreshold} failed checks to confirm down · ${service.recoveryThreshold} successful checks to recover", style = MaterialTheme.typography.bodySmall)
             if (incidents.isEmpty()) Text("No confirmed incidents")
-            incidents.forEach { incident ->
-                Text("${formatTime(incident.startedAt)} → ${incident.endedAt?.let(::formatTime) ?: "Ongoing"}\n${incident.reason}\n${incident.downChecks} failed checks · ${incident.unknownChecks} unknown checks", style = MaterialTheme.typography.bodyMedium)
-                HorizontalDivider()
+            if (incidents.isNotEmpty()) LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp).testTag("incident-history"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(incidents, key = { it.id }) { incident ->
+                    Text("${formatTime(incident.startedAt)} → ${incident.endedAt?.let(::formatTime) ?: "Ongoing"}\n${incident.reason}\n${incident.downChecks} failed checks · ${incident.unknownChecks} unknown checks", style = MaterialTheme.typography.bodyMedium)
+                    HorizontalDivider(Modifier.padding(top = 10.dp))
+                }
             }
         }
         DetailSection {
@@ -440,7 +442,7 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
         }
         RecentChecks(service.id, vm.dao)
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            MaintenanceControls(service.maintenanceUntil, now) { vm.setMaintenance(service.id, it) }
+            MaintenanceControls(service.maintenanceUntil, now, service.maintenanceHours) { until, hours -> vm.setMaintenance(service.id, until, hours) }
             DetailSection {
                 Text("Manage monitor", style = MaterialTheme.typography.titleLarge)
                 CsvExportButtons(service.id, vm.dao)
@@ -462,7 +464,7 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
         Row(verticalAlignment = Alignment.CenterVertically) { Text("Availability", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge); AppIconButton(onClick = { fullscreen("Availability") }) { Icon(Icons.Default.Fullscreen, "Fullscreen availability") } }
         Text(if (total == 0L) "No checks yet" else "${"%.1f".format(stats.upCount * 100.0 / total)}% successful checks")
         Text("${stats.upCount} up · ${stats.downCount} down · ${stats.skippedCount} skipped. Missing checks are unknown.", style = MaterialTheme.typography.bodySmall)
-        BucketAvailability(buckets, since, now, Modifier.fillMaxWidth().height(60.dp))
+        BucketAvailability(buckets, since, now, Modifier.fillMaxWidth().height(120.dp * androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)))
         Text("Green: up · red: down · gray: skipped · blank: no checks", style = MaterialTheme.typography.bodySmall)
         Text("${hours}h window · older raw checks may have been removed by your retention setting", style = MaterialTheme.typography.bodySmall)
     }
@@ -474,17 +476,32 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
 }
 
 @Composable private fun BucketAvailability(buckets: List<ChartBucket>, since: Long, now: Long, modifier: Modifier) {
-    val summary = "Availability graph: ${buckets.sumOf { it.upCount }} up, ${buckets.sumOf { it.downCount }} down, ${buckets.sumOf { it.skippedCount }} skipped checks"
-    Canvas(modifier.semantics { contentDescription = summary }) {
-        buckets.forEach { b ->
-            val x = ((b.time - since).toFloat() / (now - since).coerceAtLeast(1)).coerceIn(0f, 1f) * size.width
-            val total = (b.upCount + b.downCount + b.skippedCount).coerceAtLeast(1)
-            val upHeight = size.height * b.upCount / total
-            val downHeight = size.height * b.downCount / total
-            drawLine(Color(0xff16835c), Offset(x, 0f), Offset(x, upHeight), strokeWidth = 4f)
-            drawLine(Color(0xffc62828), Offset(x, upHeight), Offset(x, upHeight + downHeight), strokeWidth = 4f)
-            drawLine(Color.Gray, Offset(x, upHeight + downHeight), Offset(x, size.height), strokeWidth = 4f)
+    val summary = "Availability from ${formatTime(since)} to ${formatTime(now)}: ${buckets.sumOf { it.upCount }} up, ${buckets.sumOf { it.downCount }} down, ${buckets.sumOf { it.skippedCount }} skipped checks"
+    val grid = MaterialTheme.colorScheme.outlineVariant
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Canvas(Modifier.fillMaxWidth().weight(1f).semantics { contentDescription = summary }) {
+            listOf(0f, .5f, 1f).forEach { fraction -> drawLine(grid, Offset(size.width * fraction, 0f), Offset(size.width * fraction, size.height), strokeWidth = 1.dp.toPx()) }
+            buckets.forEach { b ->
+                val x = ((b.time - since).toFloat() / (now - since).coerceAtLeast(1)).coerceIn(0f, 1f) * size.width
+                val total = (b.upCount + b.downCount + b.skippedCount).coerceAtLeast(1)
+                val upHeight = size.height * b.upCount / total
+                val downHeight = size.height * b.downCount / total
+                drawLine(Color(0xff16835c), Offset(x, 0f), Offset(x, upHeight), strokeWidth = 4f)
+                drawLine(Color(0xffc62828), Offset(x, upHeight), Offset(x, upHeight + downHeight), strokeWidth = 4f)
+                drawLine(Color.Gray, Offset(x, upHeight + downHeight), Offset(x, size.height), strokeWidth = 4f)
+            }
         }
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val ticks = if (maxWidth >= 320.dp) listOf(since, since + (now - since) / 2, now) else listOf(since, now)
+            val formatter = java.text.SimpleDateFormat(if (now - since < 86_400_000L) "HH:mm" else "MMM d\nHH:mm", java.util.Locale.getDefault())
+            Row(Modifier.fillMaxWidth()) {
+                ticks.forEachIndexed { index, time ->
+                    Text(formatter.format(java.util.Date(time)), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall,
+                        textAlign = when (index) { 0 -> androidx.compose.ui.text.style.TextAlign.Start; ticks.lastIndex -> androidx.compose.ui.text.style.TextAlign.End; else -> androidx.compose.ui.text.style.TextAlign.Center })
+                }
+            }
+        }
+        Text("${java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(since))} – ${java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(now))} · local time", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

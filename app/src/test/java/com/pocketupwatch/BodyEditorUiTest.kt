@@ -96,15 +96,27 @@ class BodyEditorUiTest {
     @Test fun maintenanceStartsAndEndsFromTheServiceCard() {
         val now = 1_800_000_000_000L
         var until by mutableLongStateOf(0)
-        show { Column(Modifier.padding(16.dp)) { MaintenanceControls(until, now) { until = it } } }
+        var hours by mutableIntStateOf(0)
+        show { Column(Modifier.padding(16.dp)) { MaintenanceControls(until, now, hours) { end, duration -> until = end; hours = duration } } }
         compose.onNodeWithText("4h").performClick()
         compose.runOnIdle { assertEquals(now + 4 * 3_600_000L, until) }
         screenshot("maintenance-dark")
-        compose.onNodeWithText("End maintenance").performClick()
+        compose.onNodeWithText("4h").assertIsSelected().performClick()
         compose.runOnIdle { assertEquals(0, until) }
     }
+    @Test fun storedMaintenanceChoiceStaysSelectedAsTheWindowCountsDown() {
+        val now = 1_800_000_000_000L
+        var until by mutableLongStateOf(now + 30 * 60_000)
+        var hours by mutableIntStateOf(24)
+        show { Column(Modifier.padding(16.dp)) { MaintenanceControls(until, now, hours) { end, duration -> until = end; hours = duration } } }
+        compose.onNodeWithText("24h").assertIsSelected()
+        compose.onNodeWithText("1h").assertIsNotSelected().performClick().assertIsSelected()
+        compose.runOnIdle { assertEquals(now + 3_600_000, until); assertEquals(1, hours) }
+        compose.onNodeWithText("1h").performClick().assertIsNotSelected()
+        compose.runOnIdle { assertEquals(0, until); assertEquals(0, hours) }
+    }
     @Test fun savingEditsPreservesExistingMaintenanceAndHeaderRows() {
-        val service = ServiceEntry(id = 1, name = "API", url = "https://example.com/", intervalSeconds = 300, maintenanceUntil = System.currentTimeMillis() + 3_600_000)
+        val service = ServiceEntry(id = 1, name = "API", url = "https://example.com/", intervalSeconds = 300, maintenanceUntil = System.currentTimeMillis() + 3_600_000, maintenanceHours = 1)
         var saved: ServiceEntry? = null
         val headers = object : HeaderSecrets {
             var values: Map<String, String> = emptyMap()
@@ -121,6 +133,7 @@ class BodyEditorUiTest {
         compose.onNodeWithText("Save").performClick()
         compose.waitUntil(10_000) { saved != null }
         assertEquals(service.maintenanceUntil, saved!!.maintenanceUntil)
+        assertEquals(service.maintenanceHours, saved!!.maintenanceHours)
         assertEquals(mapOf("X-Test" to "hello"), headers.values)
     }
     @Test fun phoneResponseEditorPreview() {

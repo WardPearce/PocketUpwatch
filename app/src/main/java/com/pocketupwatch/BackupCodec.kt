@@ -116,6 +116,7 @@ internal object ServiceValidation {
         service.method !in listOf("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE") -> "Unsupported HTTP method"
         service.method == "HEAD" && service.bodyType != "None" -> "HEAD requests cannot match a body"
         service.failureThreshold !in 1..20 || service.recoveryThreshold !in 1..20 -> "Alert thresholds must be between 1 and 20"
+        service.maintenanceHours !in listOf(0, 1, 4, 24) -> "Choose a maintenance window of 1, 4 or 24 hours."
         service.repeatMinutes != 0 && service.repeatMinutes !in AlertReminders.MIN_MINUTES..AlertReminders.MAX_MINUTES -> "Choose a reminder interval from 5 minutes to 7 days, or turn reminders off."
         service.dnsExpected.isNotBlank() && service.dnsExpected.split(',').any { !isIp(it.trim()) } -> "Expected DNS answers must be comma-separated IPv4 or IPv6 addresses"
         service.certificateWarnDays !in 0..365 -> "Certificate warning must be between 0 and 365 days"

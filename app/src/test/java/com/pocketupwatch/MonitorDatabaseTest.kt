@@ -42,8 +42,8 @@ class MonitorDatabaseTest {
     @Test fun maintenanceUpdateChangesOnlyTheWindow() = runBlocking {
         val id = dao.add(template.copy(enabled = false, headersCiphertext = "keep-credentials", bodyType = "YAML", expectedBody = "ok: true"))
         val before = dao.getService(id)!!
-        dao.setMaintenance(id, 123456L)
-        assertEquals(before.copy(maintenanceUntil = 123456L), dao.getService(id))
+        dao.setMaintenance(id, 123456L, 24)
+        assertEquals(before.copy(maintenanceUntil = 123456L, maintenanceHours = 24), dao.getService(id))
         dao.setMaintenance(id, 0)
         assertEquals(before, dao.getService(id))
     }
@@ -61,11 +61,12 @@ class MonitorDatabaseTest {
             sql.execSQL("INSERT INTO services (id,name,url,intervalSeconds,enabled,expectedCode,bodyType,expectedBody,maintenanceUntil) VALUES (1,'Existing','https://example.com',300,1,0,'XML','<ok/>',999999)")
             sql.version = 5
         }
-        val migrated = Room.databaseBuilder(context, MonitorDb::class.java, name).addMigrations(MonitorDb.MIGRATION_5_6).allowMainThreadQueries().build()
+        val migrated = Room.databaseBuilder(context, MonitorDb::class.java, name).addMigrations(MonitorDb.MIGRATION_5_6, MonitorDb.MIGRATION_6_7).allowMainThreadQueries().build()
         try {
             val service = migrated.dao().getService(1)!!
             assertFalse(service.xmlStructural)
             assertFalse(service.xmlIgnoreWhitespace)
+            assertEquals(0, service.maintenanceHours)
             assertEquals(999999L, service.maintenanceUntil)
             assertEquals("<ok/>", service.expectedBody)
         } finally { migrated.close(); context.deleteDatabase(name) }
@@ -131,7 +132,7 @@ class MonitorDatabaseTest {
             sql.execSQL("INSERT INTO checks VALUES (1,1,1000,1,42,'HTTP 200')")
             sql.version = 3
         }
-        val migrated = Room.databaseBuilder(context, MonitorDb::class.java, name).addMigrations(MonitorDb.MIGRATION_3_4, MonitorDb.MIGRATION_4_5, MonitorDb.MIGRATION_5_6).allowMainThreadQueries().build()
+        val migrated = Room.databaseBuilder(context, MonitorDb::class.java, name).addMigrations(MonitorDb.MIGRATION_3_4, MonitorDb.MIGRATION_4_5, MonitorDb.MIGRATION_5_6, MonitorDb.MIGRATION_6_7).allowMainThreadQueries().build()
         try {
             assertEquals("Existing", migrated.dao().getService(1)!!.name)
             assertEquals(2, migrated.dao().getService(1)!!.failureThreshold)
@@ -159,7 +160,7 @@ class MonitorDatabaseTest {
                 }
                 sql.version = version
             }
-            val migrated = Room.databaseBuilder(context, MonitorDb::class.java, name).addMigrations(MonitorDb.MIGRATION_1_2, MonitorDb.MIGRATION_2_3, MonitorDb.MIGRATION_3_4, MonitorDb.MIGRATION_4_5, MonitorDb.MIGRATION_5_6).allowMainThreadQueries().build()
+            val migrated = Room.databaseBuilder(context, MonitorDb::class.java, name).addMigrations(MonitorDb.MIGRATION_1_2, MonitorDb.MIGRATION_2_3, MonitorDb.MIGRATION_3_4, MonitorDb.MIGRATION_4_5, MonitorDb.MIGRATION_5_6, MonitorDb.MIGRATION_6_7).allowMainThreadQueries().build()
             try {
                 val service = migrated.dao().getService(1)!!
                 assertEquals(300, service.intervalSeconds)
