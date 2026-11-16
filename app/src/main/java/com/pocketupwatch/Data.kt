@@ -27,6 +27,7 @@ data class ServiceEntry(
     // Keep the legacy SQL default so existing disabled reminders stay off.
     @ColumnInfo(defaultValue = "0") val repeatMinutes: Int = AlertReminders.DEFAULT_MINUTES,
     @ColumnInfo(defaultValue = "0") val maintenanceUntil: Long = 0,
+    @ColumnInfo(defaultValue = "0") val maintenanceHours: Int = 0,
     @ColumnInfo(defaultValue = "30") val certificateWarnDays: Int = 30,
     @ColumnInfo(defaultValue = "''") val dnsExpected: String = "",
     @ColumnInfo(defaultValue = "''") val tags: String = "",
@@ -59,7 +60,7 @@ data class HistoryPage(val checks: List<CheckEntry>, val total: Int, val page: I
     @Insert suspend fun add(service: ServiceEntry): Long
     @Delete suspend fun delete(service: ServiceEntry)
     @Update suspend fun update(service: ServiceEntry)
-    @Query("UPDATE services SET maintenanceUntil = :until WHERE id = :id") suspend fun setMaintenance(id: Long, until: Long)
+    @Query("UPDATE services SET maintenanceUntil = :until, maintenanceHours = :hours WHERE id = :id") suspend fun setMaintenance(id: Long, until: Long, hours: Int = 0)
     @Query("UPDATE services SET enabled = :enabled WHERE :enabled = 0 OR needsReview = 0") suspend fun setAllEnabled(enabled: Boolean)
     @Query("SELECT (SELECT COUNT(*) FROM checks) AS checks, (SELECT COUNT(*) FROM incidents) AS incidents, (SELECT COUNT(*) FROM hourly_stats) AS summaries, (SELECT MIN(time) FROM checks) AS oldest") fun storageStats(): Flow<StorageStats>
     @Query("SELECT COUNT(*) FROM checks WHERE time < :before AND id NOT IN (SELECT MAX(id) FROM checks GROUP BY serviceId)") suspend fun cleanupCount(before: Long): Long
@@ -148,10 +149,11 @@ data class HistoryPage(val checks: List<CheckEntry>, val total: Int, val page: I
     }
 }
 
-@Database(entities = [ServiceEntry::class, CheckEntry::class, AlertState::class, Incident::class, HourlyStats::class], version = 6, exportSchema = true)
+@Database(entities = [ServiceEntry::class, CheckEntry::class, AlertState::class, Incident::class, HourlyStats::class], version = 7, exportSchema = true)
 abstract class MonitorDb : RoomDatabase() {
     abstract fun dao(): MonitorDao
     companion object {
+        val MIGRATION_6_7 = object : Migration(6, 7) { override fun migrate(db: SupportSQLiteDatabase) { db.execSQL("ALTER TABLE services ADD COLUMN maintenanceHours INTEGER NOT NULL DEFAULT 0") } }
         val MIGRATION_5_6 = object : Migration(5, 6) { override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("ALTER TABLE services ADD COLUMN xmlStructural INTEGER NOT NULL DEFAULT 0")
             db.execSQL("ALTER TABLE services ADD COLUMN xmlIgnoreWhitespace INTEGER NOT NULL DEFAULT 0")
@@ -178,6 +180,6 @@ abstract class MonitorDb : RoomDatabase() {
             }
         }
         @Volatile private var instance: MonitorDb? = null
-        fun get(context: Context): MonitorDb = instance ?: synchronized(this) { instance ?: Room.databaseBuilder(context.applicationContext, MonitorDb::class.java, "monitor.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).addCallback(MINIMUM_INTERVAL_CALLBACK).build().also { instance = it } }
+        fun get(context: Context): MonitorDb = instance ?: synchronized(this) { instance ?: Room.databaseBuilder(context.applicationContext, MonitorDb::class.java, "monitor.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7).addCallback(MINIMUM_INTERVAL_CALLBACK).build().also { instance = it } }
     }
 }

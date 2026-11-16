@@ -186,7 +186,17 @@ internal fun relativeCheckAge(time: Long, now: Long): String {
                     }
                 }
                 if (filter == DashboardFilter.UNKNOWN) Text("Unknown includes skipped, delayed, stopped and pending checks.", style = MaterialTheme.typography.bodySmall)
-                if (filter != DashboardFilter.ALL || effectiveTag.isNotEmpty() || search.isNotEmpty()) TextButton(onClick = { filter = DashboardFilter.ALL; tag = ""; search = "" }) { Text("Clear filters") }
+                if (filter != DashboardFilter.ALL || effectiveTag.isNotEmpty() || search.isNotEmpty()) {
+                    val count = listOf(filter != DashboardFilter.ALL, effectiveTag.isNotEmpty(), search.isNotEmpty()).count { it }
+                    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("$count active ${if (count == 1) "filter" else "filters"}", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                            TextButton(onClick = { filter = DashboardFilter.ALL; tag = ""; search = "" }, modifier = Modifier.testTag("clear-filters")) {
+                                Icon(Icons.Default.FilterAltOff, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Clear filters")
+                            }
+                        }
+                    }
+                }
             }
         }
         if (visible.isEmpty()) item {

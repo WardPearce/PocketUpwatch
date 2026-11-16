@@ -63,7 +63,7 @@ Dark-mode app previews with sample monitors and data. Select an image to view it
 | :---: | :---: |
 | <a href="previews/tablet-overview-dark.png"><img src="previews/tablet-overview-dark.png" alt="Tablet workspace with a monitor list beside service status, schedule, availability, and response-time charts" width="400" /></a> | <a href="previews/tablet-settings-dark.png"><img src="previews/tablet-settings-dark.png" alt="Tablet settings with categories beside the backup and restore page" width="400" /></a> |
 
-[Expected response on a tablet](previews/tablet-expected-response-dark.png) · [Maintenance controls](previews/maintenance-dark.png) · [Repeat alert reminders](previews/alert-reminders-dark.png)
+[Expected response on a tablet](previews/tablet-expected-response-dark.png) · [Maintenance controls](previews/maintenance-dark.png) · [Repeat alert reminders](previews/alert-reminders-dark.png) · [Maintenance toggles](previews/maintenance-toggle-dark.png) · [Availability timeline](previews/availability-timeline-dark.png) · [Incident history](previews/incident-history-dark.png) · [Filter controls](previews/clear-filters-dark.png)
 
 More views: [tablet editor](previews/tablet-editor-dark.png) · [portrait tablet](previews/tablet-portrait-dark.png) · [unfolded foldable](previews/foldable-unfolded-dark.png) · [tabletop fold](previews/foldable-tabletop-dark.png).
 

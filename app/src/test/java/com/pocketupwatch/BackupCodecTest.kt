@@ -41,6 +41,13 @@ class BackupCodecTest {
         assertTrue(csv.contains("\"'=SUM(1,2)\"\"\""))
         assertTrue(csv.endsWith("\r\n"))
     }
+    @Test fun maintenanceChoiceSurvivesPortableBackups() {
+        val original = service.copy(maintenanceUntil = 1_800_000_000_000, maintenanceHours = 24)
+        val backup = BackupCodec.encode(listOf(original), "long test password".toCharArray()) { emptyMap() }
+        val restored = BackupCodec.decode(backup, "long test password".toCharArray()) { "" }.single()
+        assertEquals(original.maintenanceUntil, restored.maintenanceUntil)
+        assertEquals(24, restored.maintenanceHours)
+    }
     @Test fun oldReminderIntervalsAreRaisedAndDisabledBackupsStayOff() {
         val root = com.google.gson.JsonParser.parseString(BackupCodec.encode(listOf(service), charArrayOf()) { emptyMap() }).asJsonObject
         val monitor = root["monitors"].asJsonArray[0].asJsonObject
