@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.13
+
+- Choose failure and recovery confirmation counts with 1–20 check sliders, both in the service editor and new-monitor defaults.
+- Choose repeat-alert reminders with a slider, starting at 5 minutes. New monitors default to reminders every hour.
+- Deliver repeat alerts with Android alarms independently of check intervals, respecting recovery, pause, maintenance, quiet hours and snooze.
+- Turn repeats off with a switch; existing disabled reminders stay off. Existing and restored intervals below 5 minutes are raised to 5 minutes.
+
 ## 0.1.12
 
 - Move maintenance directly above the Manage monitor panel at the bottom of the service page. Keep both panels stacked together on phones and tablets.

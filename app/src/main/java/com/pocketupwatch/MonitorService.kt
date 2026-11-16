@@ -67,7 +67,15 @@ class MonitorService : Service() {
         active.value = true
         MonitoringWidget.updateAll(this)
         network.registerDefaultNetworkCallback(callback)
-        scope.launch { MonitorDb.get(this@MonitorService).dao().services().collect { wake.trySend(Unit) } }
+        scope.launch {
+            val dao = MonitorDb.get(this@MonitorService).dao()
+            dao.services().collect {
+                try { AlertReminderAlarm.reconcile(this@MonitorService, dao) }
+                catch (e: CancellationException) { throw e }
+                catch (e: Exception) { BackgroundDiagnostics.failure(this@MonitorService, "Reminder scheduling", e) }
+                wake.trySend(Unit)
+            }
+        }
         scope.launch { scheduler() }
     }
     private fun publish(id: Int, notification: Notification) {
@@ -173,16 +181,20 @@ class MonitorService : Service() {
         val skip = ConnectivityPolicy.skipReason(service, before.first, before.second, System.currentTimeMillis())
         val result = if (skip != null) ProbeResult(null, skip) else withContext(Dispatchers.IO) { ProbeEngine.runner(this@MonitorService).run(service) }
         currentCoroutineContext().ensureActive()
-        val saved = dao.recordResultIfUnchanged(service, CheckEntry(serviceId = service.id, time = System.currentTimeMillis(), up = result.up == true, responseMs = result.responseMs, detail = result.detail, skipped = result.up == null)) ?: return
-        BackgroundDiagnostics.mark(this, "last_result")
-        val current = dao.getService(service.id)
-        val notificationEvent = if (current == service && service.enabled && !service.needsReview) AlertSilence.event(AppSettings.prefs(this), service.id, saved.notification,
-            saved.confirmed, result.up == null, System.currentTimeMillis(), result.up == true) else null
-        if (notificationEvent != null && AppNotifications.allowed(this, "alerts")) {
-            val alert = NotificationCompat.Builder(this, "alerts").setSmallIcon(android.R.drawable.stat_notify_error).setContentTitle("${service.name} $notificationEvent").setContentText(result.detail).setContentIntent(openIntent(service.id)).setAutoCancel(true).build()
-            publish((service.id % (Int.MAX_VALUE - 2)).toInt() + 2, alert)
+        val recorded = AlertReminderAlarm.update(this, dao) {
+            val saved = dao.recordResultIfUnchanged(service, CheckEntry(serviceId = service.id, time = System.currentTimeMillis(), up = result.up == true, responseMs = result.responseMs, detail = result.detail, skipped = result.up == null)) ?: return@update false
+            BackgroundDiagnostics.mark(this, "last_result")
+            val current = dao.getService(service.id)
+            val notificationEvent = if (current == service && service.enabled && !service.needsReview) AlertSilence.event(AppSettings.prefs(this), service.id, saved.notification,
+                saved.confirmed, result.up == null, System.currentTimeMillis(), result.up == true) else null
+            if (notificationEvent != null && AppNotifications.allowed(this, "alerts")) {
+                val alert = NotificationCompat.Builder(this, "alerts").setSmallIcon(android.R.drawable.stat_notify_error).setContentTitle("${service.name} $notificationEvent").setContentText(result.detail).setContentIntent(openIntent(service.id)).setAutoCancel(true).build()
+                publish((service.id % (Int.MAX_VALUE - 2)).toInt() + 2, alert)
+                dao.markAlertDelivered(service.id, System.currentTimeMillis())
+            }
+            true
         }
-        MonitoringWidget.updateAll(this, service.id)
+        if (recorded) MonitoringWidget.updateAll(this, service.id)
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_RUN) {

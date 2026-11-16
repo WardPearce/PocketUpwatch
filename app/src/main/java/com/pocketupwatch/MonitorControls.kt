@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -71,6 +72,64 @@ internal fun formatInterval(seconds: Int): String {
             Text(formatInterval(intervals.last()), style = MaterialTheme.typography.bodySmall)
         }
 
+    }
+}
+
+@Composable internal fun ConfirmationSlider(checks: Int, recovery: Boolean, enabled: Boolean = true, onChange: (Int) -> Unit) {
+    val state = "$checks ${if (recovery) "successful" else "failed"} ${if (checks == 1) "check" else "checks"}"
+    Column(Modifier.fillMaxWidth()) {
+        Text("${if (recovery) "Recover" else "Mark down"} after $state", style = MaterialTheme.typography.titleSmall)
+        Slider(
+            value = checks.toFloat().coerceIn(1f, 20f), valueRange = 1f..20f, steps = 18, enabled = enabled,
+            onValueChange = { position -> position.roundToInt().coerceIn(1, 20).takeIf { it != checks }?.let(onChange) },
+            modifier = Modifier.fillMaxWidth().testTag(if (recovery) "recovery-threshold-slider" else "failure-threshold-slider").semantics {
+                contentDescription = if (recovery) "Recovery confirmation" else "Failure confirmation"
+                stateDescription = state
+            }
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("1 check", style = MaterialTheme.typography.bodySmall)
+            Text("20 checks", style = MaterialTheme.typography.bodySmall)
+        }
+        Text("Checks must ${if (recovery) "pass" else "fail"} in a row.", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+internal fun formatReminderInterval(minutes: Int): String = if (minutes >= 1440 && minutes % 1440 == 0) {
+    val days = minutes / 1440
+    "$days ${if (days == 1) "day" else "days"}"
+} else formatInterval(minutes * 60)
+
+@Composable internal fun RepeatAlertSlider(minutes: Int, originalMinutes: Int?, enabled: Boolean = true, onChange: (Int) -> Unit) {
+    val intervals = remember(originalMinutes) {
+        (listOf(5, 10, 15, 30, 60, 120, 240, 360, 720, 1440, 2880, 4320, 10080) +
+            listOfNotNull(originalMinutes?.let(AlertReminders::normalize)?.takeIf { it in AlertReminders.MIN_MINUTES..AlertReminders.MAX_MINUTES })).distinct().sorted()
+    }
+    var lastInterval by rememberSaveable(originalMinutes) { mutableIntStateOf(minutes.takeIf { it > 0 }?.let(AlertReminders::normalize) ?: AlertReminders.DEFAULT_MINUTES) }
+    EditorToggle("Repeat alerts", "Remind me if an outage continues.", minutes > 0, enabled) { checked ->
+        if (!checked) lastInterval = AlertReminders.normalize(minutes)
+        onChange(if (checked) lastInterval else 0)
+    }
+    if (minutes > 0) Column(Modifier.fillMaxWidth()) {
+        Text("Remind every ${formatReminderInterval(minutes)}", style = MaterialTheme.typography.titleSmall)
+        Slider(
+            value = intervals.indexOf(AlertReminders.normalize(minutes)).coerceAtLeast(0).toFloat(),
+            onValueChange = { position ->
+                lastInterval = intervals[position.roundToInt().coerceIn(intervals.indices)]
+                onChange(lastInterval)
+            },
+            enabled = enabled,
+            valueRange = 0f..intervals.lastIndex.toFloat(), steps = intervals.size - 2,
+            modifier = Modifier.fillMaxWidth().testTag("repeat-alert-slider").semantics {
+                contentDescription = "Alert reminder interval"
+                stateDescription = formatReminderInterval(minutes)
+            }
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("5 min", style = MaterialTheme.typography.bodySmall)
+            Text("7 days", style = MaterialTheme.typography.bodySmall)
+        }
+        Text("Android may delay reminders.", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

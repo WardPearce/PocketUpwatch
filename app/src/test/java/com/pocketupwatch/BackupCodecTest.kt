@@ -41,6 +41,20 @@ class BackupCodecTest {
         assertTrue(csv.contains("\"'=SUM(1,2)\"\"\""))
         assertTrue(csv.endsWith("\r\n"))
     }
+    @Test fun oldReminderIntervalsAreRaisedAndDisabledBackupsStayOff() {
+        val root = com.google.gson.JsonParser.parseString(BackupCodec.encode(listOf(service), charArrayOf()) { emptyMap() }).asJsonObject
+        val monitor = root["monitors"].asJsonArray[0].asJsonObject
+        monitor.addProperty("repeatMinutes", 1)
+        assertEquals(5, BackupCodec.decode(root.toString(), charArrayOf()) { "" }.single().repeatMinutes)
+        monitor.addProperty("repeatMinutes", 0)
+        assertEquals(0, BackupCodec.decode(root.toString(), charArrayOf()) { "" }.single().repeatMinutes)
+        monitor.remove("repeatMinutes")
+        assertEquals(0, BackupCodec.decode(root.toString(), charArrayOf()) { "" }.single().repeatMinutes)
+        assertNotNull(ServiceValidation.error(service.copy(repeatMinutes = 4)))
+        assertNull(ServiceValidation.error(service.copy(repeatMinutes = 5)))
+        assertNull(ServiceValidation.error(service.copy(repeatMinutes = 0)))
+        assertNotNull(ServiceValidation.error(service.copy(repeatMinutes = 10081)))
+    }
     @Test fun validationPreservesAny2xxAndRejectsUnsafeHeaders() {
         assertNull(ServiceValidation.error(service.copy(expectedCode = 0)))
         assertNotNull(ServiceValidation.error(service, mapOf("X-Test" to "value\r\nInjected: yes")))

@@ -178,22 +178,22 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
     fun save(service: ServiceEntry, onSaved: (Long) -> Unit = {}) = viewModelScope.launch {
         if (service.enabled && service.needsReview) { error.value = "Review this monitor before starting it."; return@launch }
         try {
-            val id = if (service.id == 0L) dao.add(service) else { dao.update(service); service.id }
+            val id = AlertReminderAlarm.update(getApplication(), dao) { if (service.id == 0L) dao.add(service) else { dao.update(service); service.id } }
             if (service.enabled) MonitorService.start(getApplication())
             MonitoringWidget.updateAll(getApplication(), id)
             onSaved(id)
         } catch (_: Exception) { error.value = "Couldn't save this monitor. Try again." }
     }
     fun setMaintenance(id: Long, until: Long) = viewModelScope.launch {
-        try { dao.setMaintenance(id, until); MonitoringWidget.updateAll(getApplication(), id) }
+        try { AlertReminderAlarm.update(getApplication(), dao) { dao.setMaintenance(id, until) }; MonitoringWidget.updateAll(getApplication(), id) }
         catch (_: Exception) { error.value = "Couldn't update maintenance. Try again." }
     }
     fun delete(service: ServiceEntry, done: () -> Unit) = viewModelScope.launch {
-        try { dao.delete(service); MonitoringWidget.updateAll(getApplication(), service.id); done() } catch (_: Exception) { error.value = "Couldn't delete this monitor. Try again." }
+        try { AlertReminderAlarm.update(getApplication(), dao) { dao.delete(service) }; MonitoringWidget.updateAll(getApplication(), service.id); done() } catch (_: Exception) { error.value = "Couldn't delete this monitor. Try again." }
     }
     fun setAll(enabled: Boolean) = viewModelScope.launch {
         try {
-            dao.setAllEnabled(enabled)
+            AlertReminderAlarm.update(getApplication(), dao) { dao.setAllEnabled(enabled) }
             if (enabled) MonitorService.start(getApplication())
             MonitoringWidget.updateAll(getApplication())
         } catch (_: Exception) { error.value = "Couldn't update monitoring. Try again." }
@@ -239,7 +239,7 @@ class MonitorViewModel @JvmOverloads constructor(app: Application, val dao: Moni
         if (settingsRequest != null) { settingsPage = settingsRequest; tools = true; adding = false; editingId = 0; selectedId = 0 }
         else if (requestedServiceId != 0L) { selectedId = requestedServiceId; tools = false; adding = false; editingId = 0 }
     }
-    LaunchedEffect(Unit) { AppNotifications.channels(context); AppNotifications.remindBackup(context); AppNotifications.scheduleBackupReminder(context) }
+    LaunchedEffect(Unit) { AppNotifications.channels(context); AppNotifications.remindBackup(context); AppNotifications.scheduleBackupReminder(context); AlertReminderAlarm.reconcile(context, vm.dao) }
     LaunchedEffect(loaded != null) {
         if (loaded?.isNotEmpty() == true) { prefs.edit().putBoolean("onboarding_complete", true).apply(); onboardingComplete = true }
         if (loaded?.any { it.enabled } == true) MonitorService.start(context)

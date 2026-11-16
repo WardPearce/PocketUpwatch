@@ -142,6 +142,17 @@ class SettingsFeaturesTest {
         assertEquals("Allow service alerts in Android settings first.", AppNotifications.test(app))
         screenshot("settings-notifications")
     }
+    @Test fun confirmationDefaultSlidersDoNotChangeExistingMonitors() = runBlocking {
+        AppSettings.write(AppSettings.prefs(app), AppSettings(failures = 3, recoveries = 2))
+        val id = dao.add(service.copy(failureThreshold = 3, recoveryThreshold = 2))
+        show("Monitoring")
+        compose.onNodeWithTag("failure-threshold-slider").performScrollTo().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetProgress) { it(20f) }
+        compose.onNodeWithTag("recovery-threshold-slider").performScrollTo().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetProgress) { it(1f) }
+        assertEquals(20, AppSettings.read(AppSettings.prefs(app)).failures)
+        assertEquals(1, AppSettings.read(AppSettings.prefs(app)).recoveries)
+        assertEquals(3, dao.getService(id)!!.failureThreshold)
+        assertEquals(2, dao.getService(id)!!.recoveryThreshold)
+    }
     @Test fun newDefaultsApplyOnlyToNewMonitorsAndInputsHaveEqualBounds() {
         AppSettings.write(AppSettings.prefs(app), AppSettings(intervalSeconds = 7200, timeoutSeconds = 12, failures = 3, recoveries = 2, requireInternet = false))
         var saved: ServiceEntry? = null

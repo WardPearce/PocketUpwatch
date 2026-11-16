@@ -108,7 +108,7 @@ private val settingPages = listOf("Monitoring", "Notifications", "Appearance and
             encryptForm = false
         }
     }
-    fun save(value: AppSettings) { AppSettings.write(prefs, value); AppNotifications.scheduleBackupReminder(context) }
+    fun save(value: AppSettings) { AppSettings.write(prefs, value); AppNotifications.scheduleBackupReminder(context); state.refreshAlertReminders() }
     fun open(intent: Intent) { runCatching { context.startActivity(intent) }.onFailure { state.message = "This setting isn't available on your device." } }
     fun channel(id: String) { open(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName).putExtra(Settings.EXTRA_CHANNEL_ID, id)) }
     val diagnostics = remember(now, refresh) { BackgroundDiagnostics.prefs(context).all }
@@ -170,8 +170,8 @@ private val settingPages = listOf("Monitoring", "Notifications", "Appearance and
                         IntervalSlider(settings.intervalSeconds, settings.intervalSeconds) { save(settings.copy(intervalSeconds = it)) }
                         SettingsChoice("Timeout", "${settings.timeoutSeconds} sec", listOf(1, 5, 10, 15, 20, 30, 60).map { "$it sec" }) { save(settings.copy(timeoutSeconds = it.substringBefore(' ').toInt())) }
                         EditorToggle("Require Internet", "Turn off for local services without Internet access.", settings.requireInternet, true) { save(settings.copy(requireInternet = it)) }
-                        SettingsChoice("Failures before marking down", "${settings.failures}", (1..20).map(Int::toString)) { save(settings.copy(failures = it.toInt())) }
-                        SettingsChoice("Successes before recovery", "${settings.recoveries}", (1..20).map(Int::toString)) { save(settings.copy(recoveries = it.toInt())) }
+                        ConfirmationSlider(settings.failures, recovery = false) { save(settings.copy(failures = it)) }
+                        ConfirmationSlider(settings.recoveries, recovery = true) { save(settings.copy(recoveries = it)) }
                     }
                     "Notifications" -> {
                         SettingsRow("Service alerts", alertState, Icons.Outlined.NotificationsActive) { channel("alerts") }
@@ -183,7 +183,7 @@ private val settingPages = listOf("Monitoring", "Notifications", "Appearance and
                         val snoozeUntil = prefs.getLong("snooze_until", 0)
                         SettingsChoice("Snooze service alerts", if (snoozeUntil > now) "Until ${settingsTime(snoozeUntil)}" else "Off", listOf("Off", "1 hour", "4 hours", "24 hours")) {
                             val hours = it.substringBefore(' ').toLongOrNull() ?: 0
-                            prefs.edit().putLong("snooze_until", if (hours == 0L) 0 else now + hours * 3_600_000).apply(); refresh++
+                            prefs.edit().putLong("snooze_until", if (hours == 0L) 0 else now + hours * 3_600_000).apply(); state.refreshAlertReminders(); refresh++
                         }
                         EditorToggle("Quiet hours", "Mute service alerts on a daily schedule.", settings.quietHours, true) { save(settings.copy(quietHours = it)) }
                         if (settings.quietHours) {
@@ -191,7 +191,7 @@ private val settingPages = listOf("Monitoring", "Notifications", "Appearance and
                             SettingsRow("Ends", clock(settings.quietEnd)) { TimePickerDialog(context, { _, hour, minute -> save(settings.copy(quietEnd = hour * 60 + minute)) }, settings.quietEnd / 60, settings.quietEnd % 60, true).show() }
                             Text(if (settings.quietStart == settings.quietEnd) "Choose different start and end times to enable the schedule." else "Uses your device's time zone.", style = MaterialTheme.typography.bodySmall)
                         }
-                        Text("Checks continue while alerts are muted. Ongoing outages alert on the next failed check after alerts resume.", style = MaterialTheme.typography.bodySmall)
+                        Text("Checks continue while alerts are muted. Ongoing outages can remind you when alerts resume.", style = MaterialTheme.typography.bodySmall)
                     }
                     "Appearance and dashboard" -> {
                         SettingsChoice("Theme", mode, listOf("System", "Light", "Dark")) { onMode(it); save(settings.copy(theme = it)) }

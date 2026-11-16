@@ -114,6 +114,7 @@ class EditorUiTest {
         result.complete(ProbeResult(true, "HTTP 200"))
         compose.waitUntil(10_000) { saved != null }
         assertEquals(1, saved!!.failureThreshold)
+        assertEquals(60, saved!!.repeatMinutes)
     }
     @Test fun failedSaveShowsHttpErrorAndCanBeRetried() {
         MockWebServer().use { server ->

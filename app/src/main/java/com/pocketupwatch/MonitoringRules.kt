@@ -35,6 +35,13 @@ internal object BodyMatcher {
     } catch (_: Exception) { false }
 }
 
+internal object AlertReminders {
+    const val DEFAULT_MINUTES = 60
+    const val MIN_MINUTES = 5
+    const val MAX_MINUTES = 10080
+    fun normalize(minutes: Int): Int = if (minutes in 1 until MIN_MINUTES) MIN_MINUTES else minutes
+}
+
 internal data class AlertDecision(val state: AlertState, val notification: String? = null)
 internal object AlertPolicy {
     fun evaluate(old: AlertState, service: ServiceEntry, check: CheckEntry): AlertDecision {
@@ -49,9 +56,8 @@ internal object AlertPolicy {
         val since = if (old.downStreak == 0) check.time else old.candidateSince
         val down = streak >= service.failureThreshold
         val newlyDown = down && old.confirmed != "DOWN"
-        val reminder = old.confirmed == "DOWN" && service.repeatMinutes > 0 && check.time - old.lastAlertAt >= service.repeatMinutes * 60_000L
-        val notify = (newlyDown && (old.confirmed != "UNKNOWN" || service.notifyInitialDown)) || reminder
-        return AlertDecision(old.copy(confirmed = if (down) "DOWN" else old.confirmed, downStreak = streak, upStreak = 0, candidateSince = since, lastAlertAt = if (notify || newlyDown) check.time else old.lastAlertAt), if (notify) if (reminder) "is still down" else "is down" else null)
+        val notify = newlyDown && (old.confirmed != "UNKNOWN" || service.notifyInitialDown)
+        return AlertDecision(old.copy(confirmed = if (down) "DOWN" else old.confirmed, downStreak = streak, upStreak = 0, candidateSince = since, lastAlertAt = if (notify || newlyDown) check.time else old.lastAlertAt), if (notify) "is down" else null)
     }
 }
 

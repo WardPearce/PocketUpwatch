@@ -91,6 +91,20 @@ internal object AlertSilence {
     }
     fun suppressed(prefs: SharedPreferences, now: Long) = prefs.getLong("snooze_until", 0) > now || isQuiet(AppSettings.read(prefs), now)
 
+    fun nextAllowedTime(prefs: SharedPreferences, now: Long, zone: ZoneId = ZoneId.systemDefault()): Long {
+        val next = maxOf(now, prefs.getLong("snooze_until", 0))
+        val settings = AppSettings.read(prefs)
+        if (!isQuiet(settings, next, zone)) return next
+        val date = Instant.ofEpochMilli(next).atZone(zone).toLocalDate()
+        // Consider both offsets when quiet hours end during a repeated DST hour.
+        return (0L..2L).flatMap { days ->
+            val localEnd = date.plusDays(days).atTime(settings.quietEnd / 60, settings.quietEnd % 60)
+            val end = localEnd.atZone(zone)
+            val gap = zone.rules.getTransition(localEnd)?.takeIf { it.isGap }?.instant?.toEpochMilli()
+            listOfNotNull(end.withEarlierOffsetAtOverlap().toInstant().toEpochMilli(), end.withLaterOffsetAtOverlap().toInstant().toEpochMilli(), gap)
+        }.filter { it > next && !isQuiet(settings, it, zone) }.minOrNull() ?: next + 86_400_000L
+    }
+
     /** An outage still open after quiet hours is announced on its next failed check. */
     fun event(prefs: SharedPreferences, id: Long, event: String?, confirmed: String, skipped: Boolean, now: Long, passed: Boolean = false): String? {
         if (skipped) return null
